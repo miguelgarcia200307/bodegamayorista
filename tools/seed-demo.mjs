@@ -172,7 +172,7 @@ const banners = [
 
 const settingsDemo = {
   whatsapp: '+573000000000', phone: '+57 300 000 0000', email: 'demo@bodegamayorista.test',
-  address: 'Calle 00 # 00-00 (dirección demo)', city: 'Barranquilla', schedule: 'Lun a Sáb 8:00 a. m. – 6:00 p. m.',
+  address: 'Calle 00 # 00-00 (dirección demo)', city: 'Valledupar', schedule: 'Lun a Sáb 8:00 a. m. – 6:00 p. m.',
   instagram: 'https://instagram.com/', data_policy_text: '[DEMO] Autorizo el tratamiento de mis datos para gestionar mi pedido.', data_policy_version: 'demo-1',
   marketing_consent_text: '[DEMO] Acepto recibir promociones y un saludo de cumpleaños.', marketing_consent_version: 'demo-1',
   quote_terms: '[DEMO] Cotización válida por 8 días.', sale_terms: '[DEMO] Precios con IVA incluido.', warranty_text: '[DEMO] Garantía de 3 meses por defectos de fábrica.'

@@ -289,7 +289,7 @@ update public.site_settings set
   announcement_messages = ${lit(JSON.stringify([
     { id: 'msg-1', text: 'Envíos a todo el país · Precios especiales por mayor', enabled: true, position: 1 },
     { id: 'msg-2', text: 'Tecnología y electrodomésticos de las mejores marcas', enabled: true, position: 2 },
-    { id: 'msg-3', text: 'Paga contra entrega en Barranquilla', enabled: true, position: 3 }
+    { id: 'msg-3', text: 'Paga contra entrega en Valledupar', enabled: true, position: 3 }
   ]))}::jsonb,
   updated_at = now() where id = 1;
 `;

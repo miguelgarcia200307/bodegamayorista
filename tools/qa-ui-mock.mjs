@@ -85,7 +85,7 @@ const quoteItems = [
   item(0, { product_name: 'Audífonos inalámbricos', sku: 'AUD-1699', quantity: 1, unit_price: 169900, discount: 0, line_total: 169900 }),
   item(1, { product_name: 'Parlante portátil', sku: 'PAR-0999', quantity: 1, unit_price: 99900, discount: 0, line_total: 99900 })
 ];
-const quotes = [{ id: 'q1000000-0000-4000-8000-000000000001', quote_number: 'COT-2026-000001', customer_id: customerRef.id, status: 'borrador', valid_until: '2026-10-21', subtotal: 269800, discount_total: 0, delivery_cost: 5000, total: 274800, notes: 'Entrega coordinada con el cliente.', terms_snapshot: 'Cotización válida por 8 días. Precios sujetos a disponibilidad.', customer_snapshot: { full_name: 'Miguel García', phone: '300 123 4567', city: 'Barranquilla' }, business_snapshot: {}, created_at: '2026-10-13T15:00:00.000Z', updated_at: now, customers: customerRef, quote_items: quoteItems }];
+const quotes = [{ id: 'q1000000-0000-4000-8000-000000000001', quote_number: 'COT-2026-000001', customer_id: customerRef.id, status: 'borrador', valid_until: '2026-10-21', subtotal: 269800, discount_total: 0, delivery_cost: 5000, total: 274800, notes: 'Entrega coordinada con el cliente.', terms_snapshot: 'Cotización válida por 8 días. Precios sujetos a disponibilidad.', customer_snapshot: { full_name: 'Miguel García', phone: '300 123 4567', city: 'Valledupar' }, business_snapshot: {}, created_at: '2026-10-13T15:00:00.000Z', updated_at: now, customers: customerRef, quote_items: quoteItems }];
 const saleItems = Array.from({ length: 60 }, (_, i) => item(i));
 const sales = [{ id: 's1000000-0000-4000-8000-000000000001', sale_number: 'CV-2026-000001', customer_id: customerRef.id, source: 'pedido', status: 'confirmada', payment_method: 'Transferencia (declarado)', subtotal: 9000000, discount_total: 75000, delivery_cost: 12000, total: 8937000, notes: 'Entrega coordinada por WhatsApp.', terms_snapshot: null, warranty_snapshot: null, customer_snapshot: { full_name: 'Cliente Prueba', phone: '300 123 4567', city: 'Ciudad Prueba' }, business_snapshot: { business_name: 'Bodega Mayorista F.C.', tagline: 'Tecnología, calidad y confianza' }, stock_applied_at: now, confirmed_at: now, created_at: now, updated_at: now, customers: customerRef, sale_items: saleItems, sale_returns: [] },
   { id: 's2000000-0000-4000-8000-000000000002', sale_number: 'CV-2026-000002', customer_id: customerRef.id, source: 'presencial', status: 'solicitud', payment_method: null, subtotal: 125000.5, discount_total: 0, delivery_cost: 0, total: 125000.5, notes: null, customer_snapshot: {}, business_snapshot: {}, stock_applied_at: null, created_at: now, updated_at: now, customers: customerRef, sale_items: [item(1)], sale_returns: [] }];
@@ -192,14 +192,14 @@ function expect(name, condition, detail = '') { (condition ? results : failures)
 // --- Vitrina -------------------------------------------------------------------------
 // Datos de negocio realistas para la tienda (se restauran antes de las pruebas del panel).
 const originalSettings = { ...settings };
-const demoSettings = { phone: '+57 300 000 0000', email: 'demo@bodegamayorista.test', address: 'Calle 00 # 00-00 (dirección demo)', city: 'Barranquilla', schedule: 'Lun a Sáb 8:00 a. m. – 6:00 p. m.', instagram: 'https://instagram.com/', warranty_text: '[DEMO] Garantía de 3 meses por defectos de fábrica.', data_policy_text: '[DEMO] Autorizo el tratamiento de mis datos.', whatsapp: '+573000000000', announcement_mode: 'carousel', announcement_messages: [{ id: 'demo-1', text: 'Semana de la tecnología: hasta 20% OFF', enabled: true, position: 1 }] };
-const realSettings = { address: 'Carrera 45 # 70-12', city: 'Barranquilla', schedule: 'Lunes a sábado, 8:00 a. m. a 6:00 p. m.', instagram: '@bodegaprueba', warranty_text: 'Garantía de 3 meses por defectos de fábrica.', whatsapp: '573001112233' };
+const demoSettings = { phone: '+57 300 000 0000', email: 'demo@bodegamayorista.test', address: 'Calle 00 # 00-00 (dirección demo)', city: 'Valledupar', schedule: 'Lun a Sáb 8:00 a. m. – 6:00 p. m.', instagram: 'https://instagram.com/', warranty_text: '[DEMO] Garantía de 3 meses por defectos de fábrica.', data_policy_text: '[DEMO] Autorizo el tratamiento de mis datos.', whatsapp: '+573000000000', announcement_mode: 'carousel', announcement_messages: [{ id: 'demo-1', text: 'Semana de la tecnología: hasta 20% OFF', enabled: true, position: 1 }] };
+const realSettings = { address: 'Carrera 45 # 70-12', city: 'Valledupar', schedule: 'Lunes a sábado, 8:00 a. m. a 6:00 p. m.', instagram: '@bodegaprueba', warranty_text: 'Garantía de 3 meses por defectos de fábrica.', whatsapp: '573001112233' };
 Object.assign(settings, demoSettings);
 await visit('index.html');
 let data = await evaluate(`({ text: document.body.innerText, float: !!document.querySelector('[data-wa-float]'), footer: document.querySelector('[data-site-footer]')?.innerText || '' })`);
 expect('datos demo del panel nunca se muestran al público', !/demo|00-00|300 000 0000|.test|instagram.com/i.test(data.text), (data.text.match(/.{0,30}(demo|00-00|300 000 0000).{0,30}/i) || [''])[0]);
 expect('sin WhatsApp real no se muestra el botón flotante', data.float === false);
-expect('el footer muestra la ubicación real confirmada', /Tienda física en Barranquilla/.test(data.footer));
+expect('el footer muestra la ubicación real confirmada', /Tienda física en Valledupar/.test(data.footer));
 Object.assign(settings, originalSettings, realSettings);
 await visit('index.html');
 data = await evaluate(`({ cards: document.querySelectorAll('.product-card').length, brandSection: !document.querySelector('#home-brand-section')?.hidden, text: document.body.innerText })`);
@@ -210,7 +210,7 @@ data = await evaluate(`({ rail: document.querySelectorAll('.category-rail__item:
 expect('inicio: rail de categorías con “Ver todas” completo', data.rail >= 2 && data.all === 'Ver todas', `${data.rail} ítems`);
 expect('inicio: sin franja de confianza', data.trust.length === 0, data.trust.join(' | '));
 expect('inicio: bloque mayorista con ejemplo real de tramos', /Compra al por mayor/i.test(data.wholesale) && data.wholesale.includes('12+ u') && data.wholesale.includes('19.000'), data.wholesale.replace(/\s+/g, ' ').slice(0, 160));
-expect('inicio: bloque institucional sin contradicción de ubicación y sin copy técnico', /Tienda física en Barranquilla · Envíos a todo el país/.test(data.institutional) && !/La solicitud se registra/.test(data.text) && !/Configuración pendiente/i.test(data.text));
+expect('inicio: bloque institucional sin contradicción de ubicación y sin copy técnico', /Tienda física en Valledupar · Envíos a todo el país/.test(data.institutional) && !/La solicitud se registra/.test(data.text) && !/Configuración pendiente/i.test(data.text));
 expect('inicio: sin “Imagen de demostración”', !/Imagen de demostración/i.test(data.text));
 await screenshot('home-390');
 

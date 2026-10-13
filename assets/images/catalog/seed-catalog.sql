@@ -12,7 +12,7 @@ update public.delivery_methods set name = replace(name, ' (demo)', '') where nam
 update public.site_settings set
   data_policy_text = replace(data_policy_text, '[DEMO] ', ''), marketing_consent_text = replace(marketing_consent_text, '[DEMO] ', ''),
   quote_terms = replace(quote_terms, '[DEMO] ', ''), sale_terms = replace(sale_terms, '[DEMO] ', ''), warranty_text = replace(warranty_text, '[DEMO] ', ''),
-  announcement_messages = '[{"id":"msg-1","text":"Envíos a todo el país · Precios especiales por mayor","enabled":true,"position":1},{"id":"msg-2","text":"Tecnología y electrodomésticos de las mejores marcas","enabled":true,"position":2},{"id":"msg-3","text":"Paga contra entrega en Barranquilla","enabled":true,"position":3}]'::jsonb,
+  announcement_messages = '[{"id":"msg-1","text":"Envíos a todo el país · Precios especiales por mayor","enabled":true,"position":1},{"id":"msg-2","text":"Tecnología y electrodomésticos de las mejores marcas","enabled":true,"position":2},{"id":"msg-3","text":"Paga contra entrega en Valledupar","enabled":true,"position":3}]'::jsonb,
   updated_at = now() where id = 1;
 
 insert into public.brands(id,name,slug,logo_url,sort_order) values('d444ee0a-e922-40b0-9693-a0d603f288ad','Apple','apple','assets/images/catalog/brands/apple.svg',0);

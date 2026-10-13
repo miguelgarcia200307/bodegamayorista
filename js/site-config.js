@@ -12,11 +12,11 @@ export const siteConfig = {
   businessName: 'Bodega Mayorista F.C.',
   byline: 'By Francisney Castaño',
   tagline: 'Tecnología, calidad y confianza',
-  // Confirmado por el propietario: tienda física en Barranquilla con envíos nacionales.
-  city: 'Barranquilla',
+  // Confirmado por el propietario: tienda física en Valledupar con envíos nacionales.
+  city: 'Valledupar',
   hasPhysicalStore: true,
   shipsNationwide: true,
-  // Tiempos estimados por ciudad, p. ej. [{ city: 'Barranquilla', time: '24 a 48 horas' }].
+  // Tiempos estimados por ciudad, p. ej. [{ city: 'Valledupar', time: '24 a 48 horas' }].
   shippingEstimates: [],
   // Meses de garantía (número). Si es null se usa el texto de garantía del panel.
   warrantyMonths: null,
@@ -34,7 +34,7 @@ export const siteConfig = {
   socialProof: { ordersServed: null, reviews: [] },
   // Mensajes de respaldo para la barra superior si el panel no tiene mensajes reales.
   announcements: [
-    'Tienda física en Barranquilla · Envíos a todo el país',
+    'Tienda física en Valledupar · Envíos a todo el país',
     'Arma tu pedido y confírmalo por WhatsApp'
   ],
   announcementSeconds: 5,

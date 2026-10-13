@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Bodega Mayorista F.C.">
+  <rect width="64" height="64" rx="14" fill="#172019"/>
+  <path d="M15 14h23c8 0 13 4 13 10 0 4-2 7-6 9 5 2 8 6 8 11 0 8-6 12-16 12H15V14Zm12 10v7h10c3 0 5-1 5-4s-2-3-5-3H27Zm0 16v7h11c4 0 6-1 6-4 0-2-2-3-6-3H27Z" fill="#d1ad55"/>
+  <circle cx="52" cy="13" r="5" fill="#f6f2e8"/>
+</svg>

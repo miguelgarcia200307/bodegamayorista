@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+.supabase/
+supabase/.temp/
+node_modules/
+.qa/
+*.log
+
+
+# Configuración local de herramientas
+.claude/
+
+# Respaldos, temporales y material del proyecto anterior (no forman parte de la tienda)
+_respaldo_pre_rediseno/
+legacy_readonly/
+supabase/legacy_readonly/
+tools/legacy_readonly/
+tmp/
+output/
+
+# Documentos generados (cotizaciones, facturas): pueden contener datos de clientes
+*.pdf

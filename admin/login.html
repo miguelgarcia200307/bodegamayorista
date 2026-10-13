@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" type="image/svg+xml" href="../assets/images/favicon.svg">
+  <link rel="apple-touch-icon" href="../assets/images/favicon.svg">
+  <link rel="stylesheet" href="../assets/css/admin-base.css">
+  <link rel="stylesheet" href="../assets/css/admin.css">
+  <title>Ingresar | Bodega Mayorista F.C.</title>
+</head>
+<body data-page="admin-login" class="auth-page">
+  <main class="auth-card">
+    <a class="brand brand--center auth-brand" href="../index.html" aria-label="Bodega Mayorista F.C., volver a la tienda">
+      <span class="brand-wordmark brand-wordmark--auth"><strong>BODEGA MAYORISTA</strong><b>F.C.</b><small>By Francisney Castaño</small></span>
+    </a>
+    <div class="auth-intro"><span class="eyebrow">Administración</span><h1>Bienvenido</h1><p>Ingresa con la cuenta autorizada de la tienda.</p></div>
+    <form id="login-form" class="stack-form">
+      <label>Correo electrónico<input type="email" name="email" required autocomplete="email"></label>
+      <label>Contraseña<input type="password" name="password" required autocomplete="current-password" minlength="6"></label>
+      <button class="btn btn--primary btn--block" type="submit">Ingresar</button>
+    </form>
+    <button id="forgot-password" class="link-button" type="button">Olvidé mi contraseña</button>
+    <a href="../index.html">← Volver a la tienda</a>
+  </main>
+  <div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="../js/app.js"></script>
+</body>
+</html>

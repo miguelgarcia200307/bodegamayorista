@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Ofertas | Bodega Mayorista F.C.</title>
+  <meta name="description" content="Ofertas y precios especiales de Bodega Mayorista F.C. por tiempo limitado.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bodega Mayorista F.C.">
+  <meta property="og:title" content="Ofertas | Bodega Mayorista F.C.">
+  <meta property="og:description" content="Ofertas y precios especiales de Bodega Mayorista F.C. por tiempo limitado.">
+  <meta property="og:image" content="assets/images/og-image.png">
+  <meta property="og:locale" content="es_CO">
+  <meta name="theme-color" content="#F7F5F0">
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+  <link rel="preload" href="assets/fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="promotions">
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <div id="site-header"></div>
+  <main id="main" class="container listing-page">
+    <nav id="breadcrumbs" class="breadcrumbs" aria-label="Ruta de navegación"></nav>
+    <header class="listing-head listing-head--page">
+      <div><h1 id="listing-title">Cargando…</h1><p id="listing-description" class="listing-head__description"></p></div>
+      <button id="share-listing" class="icon-button listing-head__share" type="button" aria-label="Compartir esta página"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"/></svg></button>
+    </header>
+    
+    <div class="listing-toolbar">
+      <button id="open-filters" class="listing-toolbar__button" type="button" aria-controls="filters" aria-expanded="false"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg><span>Filtrar</span><b data-filter-count hidden></b></button>
+      <button id="open-sort" class="listing-toolbar__button" type="button" aria-haspopup="dialog"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></svg><span data-sort-label>Relevancia</span></button>
+      <span id="result-count" class="listing-toolbar__count" aria-live="polite"></span>
+    </div>
+    <div id="active-filters" class="active-filters" hidden></div>
+    <div id="listing-products" class="product-grid product-grid--wide" aria-live="polite"></div>
+    <button id="load-more" class="btn btn--secondary load-more" type="button" hidden>Cargar más productos</button>
+    
+    <button id="filter-backdrop" class="filter-backdrop" type="button" aria-label="Cerrar filtros" tabindex="-1"></button>
+    <aside id="filters" class="filters" aria-label="Filtros de productos"></aside>
+  </main>
+  <div id="site-footer"></div><div id="mobile-nav"></div><div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

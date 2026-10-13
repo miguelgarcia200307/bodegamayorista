@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Bodega Mayorista F.C. | Tecnología, hogar y más a precios de bodega</title>
+  <meta name="description" content="Bodega Mayorista F.C., by Francisney Castaño: tienda física en Barranquilla con envíos a todo el país. Tecnología, hogar y más con precios de bodega y pedidos por WhatsApp.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Bodega Mayorista F.C.">
+  <meta property="og:title" content="Bodega Mayorista F.C. · By Francisney Castaño">
+  <meta property="og:description" content="Tienda física en Barranquilla · Envíos a todo el país. Arma tu pedido y confírmalo por WhatsApp.">
+  <meta property="og:image" content="assets/images/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="es_CO">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#F7F5F0">
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+  <link rel="preload" href="assets/fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="home">
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <div id="site-header"></div>
+  <main id="main" class="home">
+    <nav class="container home-categories" aria-label="Categorías">
+      <div id="home-categories" class="category-rail">
+        <span class="category-rail__item category-rail__item--skeleton" aria-hidden="true"><i class="skeleton"></i><b class="skeleton skeleton--line"></b></span>
+        <span class="category-rail__item category-rail__item--skeleton" aria-hidden="true"><i class="skeleton"></i><b class="skeleton skeleton--line"></b></span>
+        <span class="category-rail__item category-rail__item--skeleton" aria-hidden="true"><i class="skeleton"></i><b class="skeleton skeleton--line"></b></span>
+        <span class="category-rail__item category-rail__item--skeleton" aria-hidden="true"><i class="skeleton"></i><b class="skeleton skeleton--line"></b></span>
+        <span class="category-rail__item category-rail__item--skeleton" aria-hidden="true"><i class="skeleton"></i><b class="skeleton skeleton--line"></b></span>
+      </div>
+    </nav>
+
+    <section id="home-results" class="container listing-results" aria-labelledby="home-results-title" hidden>
+      <header class="listing-head">
+        <h1 id="home-results-title">Resultados</h1>
+        <p id="home-result-count" class="listing-head__count" aria-live="polite"></p>
+      </header>
+      <div class="listing-toolbar" data-listing-toolbar>
+        <button class="listing-toolbar__button" type="button" data-home-filter-trigger aria-controls="home-filters" aria-expanded="false"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg><span>Filtrar</span><b data-home-filter-count hidden></b></button>
+        <label class="listing-toolbar__sort"><span class="sr-only">Ordenar</span><select id="home-result-sort" class="select"><option value="relevance">Relevancia</option><option value="price-asc">Menor precio</option><option value="price-desc">Mayor precio</option><option value="discount">Mayor descuento</option><option value="newest">Novedades</option></select></label>
+        <button id="home-clear-results" class="btn--tertiary listing-toolbar__clear" type="button">Limpiar búsqueda</button>
+      </div>
+      <div id="home-active-filters" class="active-filters" hidden></div>
+      <div id="home-result-products" class="product-grid product-grid--wide" aria-live="polite"></div>
+      <button id="home-load-more" class="btn btn--secondary load-more" type="button" hidden>Cargar más</button>
+    </section>
+
+    <div id="home-discovery">
+      <section id="home-banner-section" class="container home-hero" aria-label="Promociones destacadas" hidden>
+        <div id="home-banner-root"></div>
+      </section>
+
+      <section id="home-promotions" class="section" aria-labelledby="home-promotions-title">
+        <div class="container">
+          <div class="section-head"><div><span class="eyebrow-label">Precios especiales</span><h2 id="home-promotions-title">Ofertas de hoy</h2></div><a class="section-link" href="promociones.html">Ver todas<svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a></div>
+          <div id="promo-products" class="rail" aria-busy="true"></div>
+        </div>
+      </section>
+
+      <section id="home-wholesale" class="container" aria-labelledby="home-wholesale-title" hidden></section>
+
+      <section id="home-brand-section" class="section" aria-labelledby="home-brands-title" hidden>
+        <div class="container" id="marcas">
+          <div class="section-head"><div><span class="eyebrow-label">Marcas</span><h2 id="home-brands-title">Marcas destacadas</h2></div></div>
+          <div id="home-brands" class="brand-rail"></div>
+        </div>
+      </section>
+
+      <section id="home-featured" class="section" hidden></section>
+      <section id="home-new" class="section" hidden></section>
+      <section id="home-social-proof" class="section" hidden></section>
+
+      <section id="store-info" class="container institutional" aria-label="Sobre la tienda"></section>
+    </div>
+    <button id="home-filter-backdrop" class="filter-backdrop" type="button" aria-label="Cerrar filtros" tabindex="-1"></button>
+    <aside id="home-filters" class="filters" aria-label="Filtros de productos"></aside>
+  </main>
+  <div id="site-footer"></div><div id="mobile-nav"></div><div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

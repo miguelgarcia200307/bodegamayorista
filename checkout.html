@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Finalizar pedido | Bodega Mayorista F.C.</title>
+  <meta name="description" content="Completa tus datos y confirma tu pedido de Bodega Mayorista F.C. por WhatsApp.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F7F5F0">
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+  <link rel="preload" href="assets/fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="checkout">
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <div id="site-header"></div>
+
+  <main id="main" class="container checkout-page">
+    <header class="page-title checkout-title">
+      <div><h1>Finalizar pedido</h1><p>Un solo paso: tus datos y te llevamos a WhatsApp para confirmar.</p></div>
+      <a class="section-link" href="carrito.html">Volver al carrito</a>
+    </header>
+
+    <div id="checkout-status" class="notice" role="status" aria-live="polite" hidden></div>
+
+    <form id="checkout-form" class="checkout-layout" novalidate>
+      <div class="checkout-main">
+        <details class="checkout-summary-mobile">
+          <summary><span>Tu pedido · <strong id="checkout-mobile-count">…</strong></span><strong id="checkout-mobile-total">—</strong></summary>
+          <div id="checkout-mobile-products" class="checkout-lines"></div>
+        </details>
+
+        <section class="checkout-card" aria-labelledby="contact-title">
+          <h2 id="contact-title">Tus datos</h2>
+          <div class="checkout-grid">
+            <label class="field" for="checkout-name"><span class="field__label">Nombre completo</span><input id="checkout-name" name="fullName" required autocomplete="name" maxlength="100" aria-describedby="fullName-error"><small id="fullName-error" class="field-error" aria-live="polite"></small></label>
+            <label class="field" for="checkout-phone"><span class="field__label">Celular (WhatsApp)</span><input id="checkout-phone" name="phone" type="tel" required autocomplete="tel" inputmode="tel" maxlength="25" placeholder="300 123 4567" aria-describedby="phone-error"><small id="phone-error" class="field-error" aria-live="polite"></small></label>
+          </div>
+        </section>
+
+        <fieldset class="checkout-card checkout-choice-group" aria-describedby="delivery-error">
+          <legend><h2>Entrega</h2></legend>
+          <div id="delivery-methods" class="choice-list"><span class="skeleton choice-skeleton"></span><span class="skeleton choice-skeleton"></span></div>
+          <small id="delivery-error" class="field-error" aria-live="polite"></small>
+          <div class="checkout-grid">
+            <label id="city-field" class="field" for="checkout-city" hidden><span class="field__label">Ciudad y departamento</span><input id="checkout-city" name="city" autocomplete="address-level2" maxlength="80" placeholder="Ej. Barranquilla, Atlántico" aria-describedby="city-error"><small id="city-error" class="field-error" aria-live="polite"></small></label>
+            <label id="address-field" class="field" for="checkout-address" hidden><span class="field__label">Dirección de entrega</span><input id="checkout-address" name="address" autocomplete="street-address" maxlength="180" placeholder="Calle, número, barrio y apartamento" aria-describedby="address-error"><small id="address-error" class="field-error" aria-live="polite"></small></label>
+          </div>
+          <p id="delivery-note" class="field__hint" hidden></p>
+        </fieldset>
+
+        <fieldset class="checkout-card checkout-choice-group" aria-describedby="payment-error">
+          <legend><h2>Método de pago preferido</h2></legend>
+          <p class="field__hint">Solo nos indica tu preferencia. El pago se coordina por WhatsApp.</p>
+          <div id="payment-methods" class="choice-list"><span class="skeleton choice-skeleton"></span><span class="skeleton choice-skeleton"></span></div>
+          <small id="payment-error" class="field-error" aria-live="polite"></small>
+        </fieldset>
+
+        <section class="checkout-card" aria-labelledby="notes-title">
+          <h2 id="notes-title">Notas <small>(opcional)</small></h2>
+          <label class="field" for="checkout-notes"><span class="sr-only">Notas del pedido</span><textarea id="checkout-notes" name="notes" rows="3" maxlength="500" placeholder="Ej. Entregar después de las 4 p. m."></textarea></label>
+          <details class="checkout-more">
+            <summary>Fecha de nacimiento <small>(opcional)</small></summary>
+            <label class="field" for="checkout-birth-date"><span class="field__label">Fecha de nacimiento</span><input id="checkout-birth-date" name="birthDate" type="date" autocomplete="bday"><small class="field__hint">Solo se usa para saludarte en tu cumpleaños si lo autorizas.</small></label>
+          </details>
+        </section>
+
+        <section class="checkout-card checkout-consents" aria-label="Privacidad">
+          <p id="data-policy-summary" class="field__hint">Usaremos tus datos solo para gestionar este pedido y contactarte por WhatsApp.</p>
+          <details id="data-policy" class="checkout-more" hidden><summary>Tratamiento de datos personales</summary><p id="data-policy-text"></p></details>
+          <label class="check-field"><input id="marketing-consent" name="marketingConsent" type="checkbox"><span id="marketing-consent-text">Autorizo, de forma opcional, felicitaciones de cumpleaños y contacto promocional.</span></label>
+        </section>
+
+        <div class="checkout-submit-mobile">
+          <button id="checkout-primary-action" class="btn btn--whatsapp btn--block checkout-submit" type="submit"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.68 1.45h.01c6.55 0 11.89-5.34 11.89-11.89A11.82 11.82 0 0 0 12.05 0Z"/></svg><span>Confirmar pedido por WhatsApp</span></button>
+        </div>
+      </div>
+
+      <aside class="checkout-sidebar" aria-label="Resumen del pedido">
+        <div class="summary">
+          <div class="summary__head"><h2>Tu pedido</h2><a class="btn--tertiary" href="carrito.html">Editar</a></div>
+          <div id="checkout-desktop-products" class="checkout-lines"></div>
+          <dl id="checkout-totals" class="summary__lines"></dl>
+          <button class="btn btn--whatsapp btn--block checkout-submit" type="submit"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.05 0C5.5 0 .16 5.34.16 11.89c0 2.1.55 4.14 1.59 5.95L.06 24l6.3-1.65a11.88 11.88 0 0 0 5.68 1.45h.01c6.55 0 11.89-5.34 11.89-11.89A11.82 11.82 0 0 0 12.05 0Z"/></svg><span>Confirmar pedido por WhatsApp</span></button>
+          <p class="summary__note">No se hacen pagos en la web. Te confirmamos disponibilidad, envío y pago por WhatsApp.</p>
+        </div>
+      </aside>
+    </form>
+
+    <section id="checkout-confirmation" class="checkout-confirmation" aria-live="assertive" hidden></section>
+  </main>
+
+  <div id="checkout-sticky" class="sticky-buy" hidden><div class="sticky-buy__price"><small>Total</small><strong id="checkout-sticky-total">—</strong></div><button class="btn btn--whatsapp checkout-sticky__button" type="submit" form="checkout-form">Confirmar pedido</button></div>
+  <div id="site-footer"></div>
+  <div id="mobile-nav"></div>
+  <div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

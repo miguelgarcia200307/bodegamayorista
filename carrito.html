@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Carrito | Bodega Mayorista F.C.</title>
+  <meta name="description" content="Revisa tu pedido en Bodega Mayorista F.C. y confírmalo por WhatsApp.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F7F5F0">
+  <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+  <link rel="preload" href="assets/fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body data-page="cart">
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <div id="site-header"></div>
+  <main id="main" class="container cart-page">
+    <header class="page-title">
+      <div><h1>Tu carrito</h1><p id="cart-count-label" aria-live="polite"></p></div>
+      <a class="section-link" href="catalogo.html">Seguir comprando</a>
+    </header>
+    <div id="cart-notices" class="cart-notices" aria-live="polite"></div>
+    <div class="cart-layout">
+      <section id="cart-items" class="cart-items is-loading" aria-label="Productos en el carrito" aria-live="polite">
+        <div class="cart-item cart-item--skeleton" aria-hidden="true"><span class="skeleton cart-item__media"></span><div class="cart-item__body"><span class="skeleton skeleton--line skeleton--short"></span><span class="skeleton skeleton--line"></span><span class="skeleton skeleton--line skeleton--mid"></span></div></div>
+      </section>
+      <aside id="cart-summary" class="summary" aria-label="Resumen del pedido" hidden></aside>
+    </div>
+    <section id="cart-recommendations" class="section" aria-labelledby="cart-recommendations-title" hidden>
+      <div class="section-head"><div><span class="eyebrow-label">Completa tu pedido</span><h2 id="cart-recommendations-title">También te puede interesar</h2></div></div>
+      <div id="cart-recommendation-products" class="rail"></div>
+    </section>
+  </main>
+  <div id="cart-sticky-checkout" class="sticky-buy cart-sticky" hidden></div>
+  <div id="site-footer"></div><div id="mobile-nav"></div><div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" type="image/svg+xml" href="../assets/images/favicon.svg">
+  <link rel="apple-touch-icon" href="../assets/images/favicon.svg">
+  <link rel="stylesheet" href="../assets/css/admin-base.css">
+  <link rel="stylesheet" href="../assets/css/admin.css">
+  <title>Nueva contraseña | Bodega Mayorista F.C.</title>
+</head>
+<body data-page="admin-reset" class="auth-page">
+  <main class="auth-card">
+    <a class="brand brand--center auth-brand" href="../index.html" aria-label="Bodega Mayorista F.C., volver a la tienda">
+      <span class="brand-wordmark brand-wordmark--auth"><strong>BODEGA MAYORISTA</strong><b>F.C.</b><small>By Francisney Castaño</small></span>
+    </a>
+    <div><span class="eyebrow">Administración</span><h1>Crea una nueva contraseña</h1></div>
+    <form id="reset-form" class="stack-form">
+      <label>Nueva contraseña<input type="password" name="password" required minlength="8" autocomplete="new-password"></label>
+      <label>Repite la contraseña<input type="password" name="confirmPassword" required minlength="8" autocomplete="new-password"></label>
+      <button class="btn btn--primary btn--block" type="submit">Guardar contraseña</button>
+    </form>
+  </main>
+  <div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="../js/app.js"></script>
+</body>
+</html>

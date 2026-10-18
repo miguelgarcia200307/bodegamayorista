@@ -2,11 +2,13 @@ import { deleteCatalogEntitySafely, deleteRow, finalizeProductRelations, getAdmi
 import { configureCrm, invalidateCrmSettings, renderCustomers, renderDashboard, renderOrders, renderQuotes, renderSales } from './admin-crm.js';
 import { configureAnalysis, renderCustomerAnalysis } from './admin-analysis.js';
 import { configureTasks, renderToday } from './admin-tasks.js';
-import { configureCoupons, renderCoupons, renderCosts, renderRelationships } from './admin-coupons.js';
+import { configureCoupons, renderCoupons } from './admin-coupons.js';
+import { configureCatalogTools, renderCosts, renderRelationships } from './admin-catalog-tools.js';
 import { getMaintenanceRuns, getPlanStatus, purgeBehaviorData } from '../lib/api.js';
 import { mountBannerEditor } from '../components/banner-editor.js';
 import { chooseAction, confirmAction, openModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
+import { icon } from '../components/icons.js';
 import { $, $$, categoryInitials, currentPrice, escapeHtml, formatMoney, getPromotionStatus, isPromoActive, localAsset, normalizeText, paymentInitials, setButtonLoading, slugify } from '../lib/helpers.js';
 import { ANNOUNCEMENT_INTERVAL_MAX, ANNOUNCEMENT_INTERVAL_MIN, ANNOUNCEMENT_TEXT_LIMIT, announcementValues, createAnnouncementController, normalizeAnnouncementSettings, validateAnnouncement } from '../lib/announcement.js';
 import { formatBytes, imageFingerprint, imageProcessingMessage, IMAGE_LIMITS, prepareProductImage } from '../lib/image-processor.js';
@@ -41,7 +43,7 @@ export async function initAdmin(){
   $('#logout-button').addEventListener('click',async()=>{await supabase.auth.signOut();location.replace('login.html');});
   setupDrawer();setupActionMenus();
   const crmContext={heading,navigateTo,getProducts:()=>products,getCategories:()=>categories,isProductLow,refreshProducts:refreshData,role:()=>staffRole};
-  configureCrm(crmContext);configureAnalysis(crmContext);configureTasks(crmContext);configureCoupons(crmContext);
+  configureCrm(crmContext);configureAnalysis(crmContext);configureTasks(crmContext);configureCoupons(crmContext);configureCatalogTools(crmContext);
   $('#admin-nav').addEventListener('click',event=>{const button=event.target.closest('[data-section]');if(!button)return;closeDrawer();navigateTo(button.dataset.section);});
   window.addEventListener('popstate',()=>loadSection(new URLSearchParams(location.search).get('section')||'dashboard'));
   await refreshData();await loadSection(new URLSearchParams(location.search).get('section')||'dashboard');
@@ -659,68 +661,399 @@ function openPasswordChangeModal(trigger){
   requestAnimationFrame(()=>currentInput.focus());
 }
 
+// --- Configuración --------------------------------------------------------------------
+// Organizada en pestañas por tema. Todos los campos de la tienda viven en un solo
+// formulario (#settings-form) aunque estén en pestañas distintas; la barra inferior
+// aparece al detectar cambios y valida llevando al usuario a la pestaña del error.
+const SETTINGS_TABS=[
+  {key:'business',label:'Negocio',icon:'store',sub:'Identidad, contacto y redes'},
+  {key:'storefront',label:'Tienda',icon:'sparkles',sub:'Barra de anuncios y banner'},
+  {key:'payments',label:'Pagos y entregas',icon:'wallet',sub:'Cómo pagan y reciben'},
+  {key:'documents',label:'Pedidos y documentos',icon:'printer',sub:'Cotizaciones, comprobantes y mensajes'},
+  {key:'legal',label:'Legal',icon:'info',sub:'Términos y políticas'},
+  {key:'privacy',label:'Privacidad',icon:'chart',sub:'Analítica y retención de datos'},
+  {key:'security',label:'Seguridad',icon:'shield',sub:'Contraseña de acceso'}
+];
+const ANNOUNCEMENT_TEMPLATES=['Envíos a todo el país','Compra al por mayor y ahorra más','Escríbenos por WhatsApp y te asesoramos','Garantía en todos nuestros productos','Atención personalizada • Tecnología, calidad y confianza'];
+const LEGAL_DOCS=[
+  {text:'terms_text',version:'terms_version',prefix:'tyc',title:'Términos y condiciones',help:'Reglas de compra que el cliente acepta en el checkout.',rows:10},
+  {text:'data_policy_text',version:'data_policy_version',prefix:'pd',title:'Política de tratamiento de datos',help:'Cómo usas los datos personales. Se acepta en el checkout.',rows:8},
+  {text:'marketing_consent_text',version:'marketing_consent_version',prefix:'mk',title:'Autorización promocional',help:'Permiso separado y opcional para enviar promociones.',rows:4},
+  {text:'shipping_policy_text',title:'Política de envíos',help:'Tiempos, cobertura y costos de envío. Se muestra en Ayuda.',rows:6},
+  {text:'returns_policy_text',title:'Cambios, devoluciones, retracto y garantía',help:'Condiciones para cambios y devoluciones. Se muestra en Ayuda.',rows:6},
+  {text:'restock_consent_text',title:'Autorización del aviso de disponibilidad',help:'Texto que acepta quien pide aviso cuando vuelva un producto.',rows:3}
+];
+
+function cfgField(name,label,value,{type='text',hint='',placeholder='',full=false,attrs='',textarea=false,rows=4,before='',after=''}={}){
+  const control=textarea?`<textarea name="${name}" rows="${rows}" placeholder="${escapeHtml(placeholder)}" ${attrs}>${escapeHtml(value??'')}</textarea>`
+    :`<input name="${name}" type="${type}" value="${escapeHtml(value??'')}" placeholder="${escapeHtml(placeholder)}" ${attrs}>`;
+  const box=before||after?`<span class="cfg-affix">${before?`<span class="cfg-affix__pre">${before}</span>`:''}${control}${after?`<span class="cfg-affix__post">${after}</span>`:''}</span>`:control;
+  return `<label class="cfg-field ${full?'cfg-field--full':''}"><span class="cfg-field__label">${label}${hint?` <small>${hint}</small>`:''}</span>${box}</label>`;
+}
+const cfgCard=(iconName,title,text,body,extra='')=>`<section class="cfg-card ${extra}"><header class="cfg-card__head"><span class="cfg-card__icon">${icon(iconName,{size:20})}</span><div><h2>${title}</h2>${text?`<p>${text}</p>`:''}</div></header><div class="cfg-card__body">${body}</div></section>`;
+const cfgSwitch=(name,title,text,checked,extra='')=>`<label class="switch-row ${extra}"><span><strong>${title}</strong><small>${text}</small></span><input class="switch" name="${name}" type="checkbox" ${checked?'checked':''}></label>`;
+const versionSuggestion=(prefix,current)=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bogota'}).format(new Date());const base=`${prefix}-${today}`;if(current!==base&&!String(current||'').startsWith(`${base}-`))return base;const n=Number(String(current).slice(base.length+1))||1;return `${base}-${n+1}`;};
+
 function announcementMessageRow(message,index,total,onChange){
-  const row=document.createElement('article');row.className='announcement-message';row.dataset.messageId=message.id;
-  const head=document.createElement('div');head.className='announcement-message__head';
-  const position=document.createElement('strong');position.textContent=`Mensaje ${index+1}`;
-  const state=document.createElement('span');state.textContent=message.enabled?'Activo':'Inactivo';state.className=`status-pill status-pill--${message.enabled?'active':'hidden'}`;
-  head.append(position,state);
-  const label=document.createElement('label');label.textContent='Texto del mensaje';
-  const input=document.createElement('input');input.type='text';input.maxLength=ANNOUNCEMENT_TEXT_LIMIT;input.value=message.text;input.required=true;input.dataset.messageText=message.id;input.setAttribute('aria-describedby',`announcement-count-${message.id}`);
-  const counter=document.createElement('small');counter.id=`announcement-count-${message.id}`;counter.className='announcement-character-count';counter.textContent=`${message.text.length}/${ANNOUNCEMENT_TEXT_LIMIT} caracteres`;
-  input.addEventListener('input',()=>{message.text=input.value;counter.textContent=`${input.value.length}/${ANNOUNCEMENT_TEXT_LIMIT} caracteres`;input.removeAttribute('aria-invalid');onChange();});
-  label.append(input,counter);
-  const actions=document.createElement('div');actions.className='announcement-message__actions';
-  const toggleLabel=document.createElement('label');toggleLabel.className='announcement-item-toggle';
-  const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.checked=message.enabled;checkbox.setAttribute('aria-label',`Activar mensaje ${index+1}`);
-  const toggleTrack=document.createElement('span');toggleTrack.setAttribute('aria-hidden','true');
-  const toggleText=document.createElement('strong');toggleText.textContent=message.enabled?'Activo':'Inactivo';
-  checkbox.addEventListener('change',()=>{message.enabled=checkbox.checked;toggleText.textContent=message.enabled?'Activo':'Inactivo';state.textContent=toggleText.textContent;state.className=`status-pill status-pill--${message.enabled?'active':'hidden'}`;onChange();});
-  toggleLabel.append(checkbox,toggleTrack,toggleText);
-  const order=document.createElement('div');order.className='announcement-order';
-  const up=document.createElement('button');up.type='button';up.textContent='↑';up.disabled=index===0;up.title='Subir mensaje';up.setAttribute('aria-label',`Subir mensaje ${index+1}`);up.addEventListener('click',()=>onChange({move:index,direction:-1}));
-  const down=document.createElement('button');down.type='button';down.textContent='↓';down.disabled=index===total-1;down.title='Bajar mensaje';down.setAttribute('aria-label',`Bajar mensaje ${index+1}`);down.addEventListener('click',()=>onChange({move:index,direction:1}));
-  order.append(up,down);
-  const remove=document.createElement('button');remove.type='button';remove.className='small-btn small-btn--danger';remove.textContent='Eliminar';remove.setAttribute('aria-label',`Eliminar mensaje ${index+1}`);remove.addEventListener('click',()=>onChange({remove:index}));
-  actions.append(toggleLabel,order,remove);row.append(head,label,actions);return row;
+  const row=document.createElement('article');
+  row.className=`announcement-message ${message.enabled?'':'is-off'}`;row.dataset.messageId=message.id;
+  row.innerHTML=`<span class="announcement-message__num" aria-hidden="true">${index+1}</span>
+    <label class="announcement-message__text"><span class="sr-only">Texto del mensaje ${index+1}</span><input type="text" maxlength="${ANNOUNCEMENT_TEXT_LIMIT}" data-message-text="${escapeHtml(message.id)}" placeholder="Escribe el mensaje ${index+1}" aria-describedby="announcement-count-${escapeHtml(message.id)}"><small id="announcement-count-${escapeHtml(message.id)}" class="announcement-character-count"></small></label>
+    <div class="announcement-message__actions">
+      <label class="announcement-item-toggle" title="Mostrar u ocultar este mensaje"><input type="checkbox" ${message.enabled?'checked':''} aria-label="Mostrar mensaje ${index+1}"><span aria-hidden="true"></span><strong>${message.enabled?'Visible':'Oculto'}</strong></label>
+      <div class="announcement-order"><button type="button" data-up ${index===0?'disabled':''} aria-label="Subir mensaje ${index+1}" title="Subir">${icon('chevronDown',{size:16,className:'is-up'})}</button><button type="button" data-down ${index===total-1?'disabled':''} aria-label="Bajar mensaje ${index+1}" title="Bajar">${icon('chevronDown',{size:16})}</button></div>
+      <button type="button" class="icon-btn icon-btn--danger" data-remove aria-label="Eliminar mensaje ${index+1}" title="Eliminar">${icon('trash',{size:16})}</button>
+    </div>`;
+  const input=row.querySelector('input[type="text"]');const counter=row.querySelector('small');const checkbox=row.querySelector('input[type="checkbox"]');
+  input.value=message.text;counter.textContent=`${message.text.length}/${ANNOUNCEMENT_TEXT_LIMIT}`;
+  input.addEventListener('input',()=>{message.text=input.value;counter.textContent=`${input.value.length}/${ANNOUNCEMENT_TEXT_LIMIT}`;input.removeAttribute('aria-invalid');onChange();});
+  checkbox.addEventListener('change',()=>{message.enabled=checkbox.checked;row.classList.toggle('is-off',!checkbox.checked);row.querySelector('.announcement-item-toggle strong').textContent=checkbox.checked?'Visible':'Oculto';onChange();});
+  row.querySelector('[data-up]').addEventListener('click',()=>onChange({move:index,direction:-1}));
+  row.querySelector('[data-down]').addEventListener('click',()=>onChange({move:index,direction:1}));
+  row.querySelector('[data-remove]').addEventListener('click',()=>onChange({remove:index}));
+  return row;
 }
 
 async function renderSettings(){
-  let bannerLoadFailed=false;const[settings,payments,deliveries,banners]=await Promise.all([getSettings(),getPaymentMethods({all:true}),getDeliveryMethods({all:true}),getHomepageBanners({all:true}).catch(error=>{bannerLoadFailed=true;console.warn('El esquema de banners no está disponible:',error);return [];})]);const accountEmail=adminSession?.user?.email||'';let announcement=normalizeAnnouncementSettings(settings);announcement.messages=announcement.messages.map(message=>({...message}));let previewController={stop(){}};let saving=false;
-  $('#admin-content').innerHTML=heading('Tu negocio','Configuración','Administra los datos de la tienda y la seguridad de tu cuenta. Los datos vacíos aparecen como “pendiente de configuración” en documentos y la tienda.')+`${!settings.whatsapp?'<p class="setup-inline" role="status"><strong>WhatsApp pendiente:</strong> el checkout y el botón de contacto permanecen deshabilitados hasta configurarlo.</p>':''}<form id="settings-form" class="admin-form"><section class="admin-form__section"><h3>Información del negocio</h3><div class="form-grid"><label>Nombre comercial<input name="business_name" value="${escapeHtml(settings.business_name||'')}" required></label><label>WhatsApp con indicativo <small>Opcional hasta configurarlo</small><input name="whatsapp" value="${escapeHtml(settings.whatsapp||'')}" inputmode="tel"></label><label>Teléfono<input name="phone" value="${escapeHtml(settings.phone||'')}"></label><label>Correo<input name="email" type="email" value="${escapeHtml(settings.email||'')}"></label><label>Dirección<input name="address" value="${escapeHtml(settings.address||'')}"></label><label>Ciudad<input name="city" value="${escapeHtml(settings.city||'')}"></label><label>Horario<input name="schedule" value="${escapeHtml(settings.schedule||'')}"></label><label>Instagram<input name="instagram" value="${escapeHtml(settings.instagram||'')}"></label><label>Facebook<input name="facebook" value="${escapeHtml(settings.facebook||'')}"></label><label>TikTok<input name="tiktok" value="${escapeHtml(settings.tiktok||'')}"></label><label class="form-grid__full">URL Google Maps<input name="maps_url" type="url" value="${escapeHtml(settings.maps_url||'')}"></label><label>Después de abrir WhatsApp<select name="checkout_behavior"><option value="keep" ${settings.checkout_behavior==='keep'?'selected':''}>Mantener carrito</option><option value="clear" ${settings.checkout_behavior==='clear'?'selected':''}>Vaciar carrito</option></select></label><label>Logo oficial<input id="site-logo" type="file" accept="image/*"></label><label class="form-grid__full">Texto de tratamiento de datos <small>Pendiente de revisión legal</small><textarea name="data_policy_text">${escapeHtml(settings.data_policy_text||'')}</textarea></label><label>Versión del texto<input name="data_policy_version" value="${escapeHtml(settings.data_policy_version||'')}"></label><label>Versión de autorización promocional<input name="marketing_consent_version" value="${escapeHtml(settings.marketing_consent_version||'')}"></label><label class="form-grid__full">Autorización promocional <small>Separada y opcional</small><textarea name="marketing_consent_text">${escapeHtml(settings.marketing_consent_text||'')}</textarea></label><label class="form-grid__full">Condiciones de cotización<textarea name="quote_terms">${escapeHtml(settings.quote_terms||'')}</textarea></label><label>NIT o identificación comercial <small>Solo si aplica; se imprime en documentos</small><input name="tax_id" maxlength="40" value="${escapeHtml(settings.tax_id||'')}"></label><label class="form-grid__full">Condiciones del comprobante de venta<textarea name="sale_terms">${escapeHtml(settings.sale_terms||'')}</textarea></label><label class="form-grid__full">Política de garantía <small>Se copia en cada comprobante al crearlo</small><textarea name="warranty_text">${escapeHtml(settings.warranty_text||'')}</textarea></label><label class="form-grid__full">Mensaje de cumpleaños <small>Usa {nombre}; el administrador lo revisa antes de enviarlo</small><textarea name="birthday_message" maxlength="700" required>${escapeHtml(settings.birthday_message||'')}</textarea></label></div></section><section class="admin-form__section" aria-labelledby="legal-settings-title"><div class="admin-form__section-head"><span aria-hidden="true">⚖</span><div><h3 id="legal-settings-title">Textos legales</h3><p>Se muestran en el checkout y en Ayuda. Si cambias un texto, cambia también su versión: los clientes aceptarán la nueva y cada pedido conserva la versión aceptada.</p></div></div><div class="form-grid"><label class="form-grid__full">Términos y condiciones<textarea name="terms_text" rows="8">${escapeHtml(settings.terms_text||'')}</textarea></label><label>Versión de los términos<input name="terms_version" maxlength="40" value="${escapeHtml(settings.terms_version||'')}"></label><label class="form-grid__full">Política de envíos<textarea name="shipping_policy_text" rows="5">${escapeHtml(settings.shipping_policy_text||'')}</textarea></label><label class="form-grid__full">Cambios, devoluciones, retracto y garantía<textarea name="returns_policy_text" rows="5">${escapeHtml(settings.returns_policy_text||'')}</textarea></label><label class="form-grid__full">Autorización del aviso de disponibilidad<textarea name="restock_consent_text" rows="3">${escapeHtml(settings.restock_consent_text||'')}</textarea></label><label class="check-field form-grid__full"><input name="legal_acceptance_required" type="checkbox" ${settings.legal_acceptance_required?'checked':''}> Exigir en el servidor la aceptación de Términos y Política para registrar pedidos <small>Actívalo cuando la versión nueva del sitio esté publicada: una versión anterior del sitio no envía la aceptación y sus pedidos serían rechazados.</small></label></div></section><section class="admin-form__section" aria-labelledby="privacy-settings-title"><div class="admin-form__section-head"><span aria-hidden="true">§</span><div><h3 id="privacy-settings-title">Privacidad y analítica</h3><p>La navegación solo se registra si activas la captura y configuras responsable, texto y versión. Rechazar no impide comprar. Revisa los textos con asesoría legal.</p></div></div><div class="form-grid"><label>Responsable del tratamiento<input name="privacy_controller_name" maxlength="160" value="${escapeHtml(settings.privacy_controller_name||'')}"></label><label>Identificación del responsable <small>Opcional</small><input name="privacy_controller_id" maxlength="60" value="${escapeHtml(settings.privacy_controller_id||'')}"></label><label class="form-grid__full">Canal para consultas, correcciones y supresión<input name="privacy_requests_channel" maxlength="200" value="${escapeHtml(settings.privacy_requests_channel||'')}"></label><label class="form-grid__full">Texto de autorización de analítica<textarea name="analytics_consent_text">${escapeHtml(settings.analytics_consent_text||'')}</textarea></label><label>Versión del texto de analítica<input name="analytics_consent_version" maxlength="40" value="${escapeHtml(settings.analytics_consent_version||'')}"></label><label class="form-grid__full">Texto de personalización <small>Opcional</small><textarea name="personalization_consent_text">${escapeHtml(settings.personalization_consent_text||'')}</textarea></label><label class="check-field form-grid__full"><input name="tracking_enabled" type="checkbox" ${settings.tracking_enabled?'checked':''}> Registrar navegación de quienes lo autoricen</label><label>Conservar eventos crudos (días)<input name="raw_event_retention_days" type="number" min="7" max="730" value="${escapeHtml(settings.raw_event_retention_days??90)}"></label><label>Conservar agregados (días)<input name="aggregate_retention_days" type="number" min="30" max="1095" value="${escapeHtml(settings.aggregate_retention_days??365)}"></label><label>Espera mínima entre contactos comerciales (días)<input name="contact_cooldown_days" type="number" min="0" max="90" value="${escapeHtml(settings.contact_cooldown_days??7)}"></label></div></section><section class="admin-form__section announcement-settings" aria-labelledby="announcement-settings-title"><div class="admin-form__section-head"><span aria-hidden="true">★</span><div><h3 id="announcement-settings-title">Barra superior de anuncios</h3><p>Configura el mensaje que reciben tus clientes en la parte superior de la tienda.</p></div></div><label class="announcement-master-toggle"><input name="announcement_enabled" type="checkbox"><span aria-hidden="true"></span><strong>Mostrar barra de anuncios<small>Al desactivarla, la tienda no reservará espacio para esta franja.</small></strong></label><fieldset class="announcement-mode"><legend>Tipo de visualización</legend><label><input type="radio" name="announcement_mode" value="static"><span><strong>Texto estático</strong><small>Muestra siempre un único mensaje.</small></span></label><label><input type="radio" name="announcement_mode" value="carousel"><span><strong>Carrusel de textos</strong><small>Cambia automáticamente entre mensajes.</small></span></label></fieldset><div data-announcement-static><label for="announcement-static-text">Texto de la barra</label><input id="announcement-static-text" name="announcement_static_text" type="text" maxlength="${ANNOUNCEMENT_TEXT_LIMIT}" aria-describedby="announcement-static-help announcement-static-count"><div class="announcement-field-meta"><small id="announcement-static-help">Los textos cortos se visualizan mejor en dispositivos móviles.</small><small id="announcement-static-count" class="announcement-character-count"></small></div></div><div data-announcement-carousel><div class="announcement-messages-head"><div><strong>Mensajes del carrusel</strong><small>Ordena, activa o desactiva cada mensaje.</small></div><button id="add-announcement-message" class="btn btn--ghost" type="button">Agregar mensaje</button></div><div id="announcement-message-list" class="announcement-message-list"></div><label class="announcement-interval" for="announcement-interval">Tiempo entre mensajes<span><input id="announcement-interval" name="announcement_interval_seconds" type="number" min="${ANNOUNCEMENT_INTERVAL_MIN}" max="${ANNOUNCEMENT_INTERVAL_MAX}" step="1" inputmode="numeric" required><b>segundos</b></span><small>Usa un número entero entre ${ANNOUNCEMENT_INTERVAL_MIN} y ${ANNOUNCEMENT_INTERVAL_MAX}.</small></label></div><p id="announcement-form-error" class="announcement-form-error" role="alert" tabindex="-1" hidden></p><section class="announcement-preview" aria-labelledby="announcement-preview-title"><div><strong id="announcement-preview-title">Vista previa</strong><small>Se actualiza mientras editas.</small></div><div id="announcement-preview-stage"><aside class="announcement" data-announcement-preview aria-label="Vista previa de la barra de anuncios"></aside><p data-announcement-hidden-note hidden>La barra estará oculta en la tienda.</p></div></section></section><div class="form-actions"><button class="btn btn--primary" type="submit">Guardar configuración</button></div></form><section class="admin-panel security-panel" aria-labelledby="security-title"><div class="security-panel__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"></path><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M12 14v2"></path></svg></div><div class="security-panel__copy"><span class="eyebrow">Seguridad</span><h2 id="security-title">Contraseña de acceso</h2><p>Actualiza la contraseña de la cuenta administradora. Tendrás que confirmar tu contraseña actual.</p>${accountEmail?`<small>Cuenta: <strong>${escapeHtml(accountEmail)}</strong></small>`:''}</div><button id="open-password-change" class="btn btn--ghost" type="button">Cambiar contraseña</button></section><section class="admin-panel"><div class="admin-panel__head"><h2>Métodos de pago</h2><button id="new-payment" class="btn btn--ghost" type="button">+ Agregar</button></div><div id="payment-list">${paymentRows(payments)}</div></section><section class="admin-panel"><div class="admin-panel__head"><h2>Métodos de entrega</h2><button id="new-delivery" class="btn btn--ghost" type="button">+ Agregar</button></div><div id="delivery-list">${deliveryRows(deliveries)}</div></section>`;
-  const bannerRoot=document.createElement('div');bannerRoot.id='banner-editor-root';bannerRoot.className='admin-form';$('#admin-content .security-panel').before(bannerRoot);const bannerCleanup=mountBannerEditor(bannerRoot,settings,banners,{ unavailable: bannerLoadFailed || settings.banner_enabled === undefined });
-  const form=$('#settings-form');const enabledInput=form.elements.announcement_enabled;const staticInput=form.elements.announcement_static_text;const intervalInput=form.elements.announcement_interval_seconds;const staticPanel=form.querySelector('[data-announcement-static]');const carouselPanel=form.querySelector('[data-announcement-carousel]');const messageList=$('#announcement-message-list');const formError=$('#announcement-form-error');const previewRoot=form.querySelector('[data-announcement-preview]');const hiddenNote=form.querySelector('[data-announcement-hidden-note]');
+  activeSectionCleanup();activeSectionCleanup=()=>{};
+  let bannerLoadFailed=false;
+  const[settings,payments,deliveries,banners]=await Promise.all([getSettings(),getPaymentMethods({all:true}),getDeliveryMethods({all:true}),getHomepageBanners({all:true}).catch(error=>{bannerLoadFailed=true;console.warn('El esquema de banners no está disponible:',error);return [];})]);
+  const accountEmail=adminSession?.user?.email||'';
+  let announcement=normalizeAnnouncementSettings(settings);announcement.messages=announcement.messages.map(message=>({...message}));
+  let previewController={stop(){}};let saving=false;let logoUrl='';let previewDevice=matchMedia('(max-width: 600px)').matches?'mobile':'desktop';
+  const initialTab=SETTINGS_TABS.some(tab=>tab.key===new URLSearchParams(location.search).get('tab'))?new URLSearchParams(location.search).get('tab'):'business';
+  const s=key=>settings[key]??'';
+
+  const businessPanel=`<div class="cfg-split"><div class="cfg-stack">
+    ${cfgCard('store','Identidad','Cómo se presenta tu negocio en la tienda y en los documentos.',`
+      <div class="cfg-logo"><div class="cfg-logo__preview" data-logo-preview>${settings.logo_url?`<img src="${escapeHtml(localAsset(settings.logo_url))}" alt="Logo actual">`:`<span>${escapeHtml(categoryInitials(settings.business_name||'BM'))}</span>`}</div>
+        <div class="cfg-logo__text"><strong>Logo oficial</strong><small>Se imprime en cotizaciones y comprobantes. PNG o JPG con fondo claro.</small><label class="small-btn" for="site-logo">${icon('download',{size:15,className:'is-up'})}<span data-logo-label>${settings.logo_url?'Cambiar logo':'Subir logo'}</span></label><input id="site-logo" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div></div>
+      <div class="cfg-grid">${cfgField('business_name','Nombre comercial',s('business_name'),{attrs:'required maxlength="120"',placeholder:'Ej. Bodega Mayorista F.C.'})}${cfgField('tax_id','NIT o identificación comercial',s('tax_id'),{hint:'Solo si aplica',attrs:'maxlength="40"',placeholder:'Ej. 900.123.456-7'})}</div>`)}
+    ${cfgCard('phone','Contacto','Por aquí te escriben y llaman tus clientes.',`
+      <div class="cfg-grid">${cfgField('whatsapp','WhatsApp con indicativo',s('whatsapp'),{full:true,attrs:'inputmode="tel" autocomplete="tel"',placeholder:'573001234567',before:icon('whatsapp',{size:16})})}
+      <p class="cfg-hint cfg-field--full" data-whatsapp-hint aria-live="polite"></p>
+      ${cfgField('phone','Teléfono',s('phone'),{attrs:'inputmode="tel"',before:icon('phone',{size:16})})}${cfgField('email','Correo',s('email'),{type:'email',before:icon('mail',{size:16})})}</div>`)}
+    ${cfgCard('pin','Ubicación y horario','Ayuda a tus clientes a encontrarte.',`
+      <div class="cfg-grid">${cfgField('address','Dirección',s('address'),{placeholder:'Ej. Carrera 45 # 70-12'})}${cfgField('city','Ciudad',s('city'),{placeholder:'Ej. Valledupar'})}
+      ${cfgField('schedule','Horario de atención',s('schedule'),{full:true,placeholder:'Ej. Lunes a sábado, 8:00 a. m. a 6:00 p. m.',before:icon('clock',{size:16})})}
+      <div class="reason-chips cfg-field--full" role="group" aria-label="Horarios sugeridos">${['Lunes a sábado, 8:00 a. m. a 6:00 p. m.','Lunes a viernes, 8:00 a. m. a 5:00 p. m.','Todos los días, 9:00 a. m. a 7:00 p. m.'].map(text=>`<button class="reason-chip" type="button" data-schedule="${escapeHtml(text)}">${escapeHtml(text)}</button>`).join('')}</div>
+      ${cfgField('maps_url','Enlace de Google Maps',s('maps_url'),{type:'url',full:true,placeholder:'https://maps.app.goo.gl/…',before:icon('navigation',{size:16})})}</div>`)}
+    ${cfgCard('share','Redes sociales','Se muestran en el pie de página de la tienda.',`
+      <div class="cfg-grid cfg-grid--3">${cfgField('instagram','Instagram',s('instagram'),{placeholder:'@tutienda',before:icon('instagram',{size:16})})}${cfgField('facebook','Facebook',s('facebook'),{placeholder:'facebook.com/tutienda',before:icon('facebook',{size:16})})}${cfgField('tiktok','TikTok',s('tiktok'),{placeholder:'@tutienda',before:icon('tiktok',{size:16})})}</div>`)}
+  </div><aside class="cfg-aside"><div class="cfg-preview-card"><span class="cfg-live"><i></i>Vista previa</span><h3>Así te ven tus clientes</h3><div class="biz-card" data-biz-card></div><p>Se actualiza mientras escribes. Los datos vacíos no se muestran en la tienda.</p></div></aside></div>`;
+
+  const storefrontPanel=`<section class="cfg-card announce-card" aria-labelledby="announcement-settings-title">
+    <header class="cfg-card__head"><span class="cfg-card__icon">${icon('chat',{size:20})}</span><div><h2 id="announcement-settings-title">Barra de anuncios</h2><p>La franja superior de la tienda: ideal para envíos, promociones o contacto.</p></div>
+      <label class="cfg-master"><input name="announcement_enabled" type="checkbox"><span aria-hidden="true"></span><strong data-announce-state></strong></label></header>
+    <div class="announce-layout"><div class="announce-config">
+      <fieldset class="choice-tiles announce-modes"><legend>¿Cómo se muestra?</legend>
+        <label class="choice-tile"><input type="radio" name="announcement_mode" value="static"><span class="choice-tile__icon">${icon('menu',{size:18})}</span><strong>Mensaje fijo</strong><small>Un único texto siempre visible.</small></label>
+        <label class="choice-tile"><input type="radio" name="announcement_mode" value="carousel"><span class="choice-tile__icon">${icon('history',{size:18})}</span><strong>Carrusel</strong><small>Varios mensajes que rotan solos.</small></label></fieldset>
+      <div data-announcement-static class="announce-static"><label class="cfg-field" for="announcement-static-text"><span class="cfg-field__label">Texto de la barra <small>Usa • para separar ideas</small></span></label><input id="announcement-static-text" name="announcement_static_text" type="text" maxlength="${ANNOUNCEMENT_TEXT_LIMIT}" aria-describedby="announcement-static-help announcement-static-count"><div class="announcement-field-meta"><small id="announcement-static-help">Los textos cortos se leen mejor en celulares.</small><small id="announcement-static-count" class="announcement-character-count"></small></div></div>
+      <div data-announcement-carousel class="announce-carousel"><div class="announcement-messages-head"><div><strong>Mensajes</strong><small>Ordénalos y elige cuáles se muestran.</small></div><button id="add-announcement-message" class="small-btn" type="button">${icon('plus',{size:15})}<span>Agregar mensaje</span></button></div><div id="announcement-message-list" class="announcement-message-list"></div>
+        <div class="announce-interval"><label class="cfg-field" for="announcement-interval"><span class="cfg-field__label">Tiempo entre mensajes</span></label><div class="announce-interval__row"><span class="cfg-affix"><input id="announcement-interval" name="announcement_interval_seconds" type="number" min="${ANNOUNCEMENT_INTERVAL_MIN}" max="${ANNOUNCEMENT_INTERVAL_MAX}" step="1" inputmode="numeric"><span class="cfg-affix__post">segundos</span></span><div class="reason-chips" role="group" aria-label="Tiempos sugeridos">${[3,5,8,12].map(value=>`<button class="reason-chip" type="button" data-interval="${value}">${value} s</button>`).join('')}</div></div><small>Entre ${ANNOUNCEMENT_INTERVAL_MIN} y ${ANNOUNCEMENT_INTERVAL_MAX} segundos. Recomendado: 5.</small></div></div>
+      <div class="announce-templates"><span>${icon('sparkles',{size:14})}Ideas rápidas</span><div class="reason-chips">${ANNOUNCEMENT_TEMPLATES.map((text,position)=>`<button class="reason-chip" type="button" data-template="${position}">${escapeHtml(text)}</button>`).join('')}</div></div>
+      <p id="announcement-form-error" class="announcement-form-error" role="alert" tabindex="-1" hidden></p>
+    </div>
+    <aside class="announce-preview" aria-labelledby="announcement-preview-title"><div class="announce-preview__head"><span class="cfg-live"><i></i>En vivo</span><strong id="announcement-preview-title">Vista previa</strong><div class="banner-device-tabs" role="group" aria-label="Tamaño de vista previa"><button type="button" data-announce-device="mobile">${icon('phone',{size:15})} Móvil</button><button type="button" data-announce-device="desktop">${icon('grid',{size:15})} Escritorio</button></div></div>
+      <div class="announce-device" data-announce-frame><div class="announce-device__chrome"><i></i><i></i><i></i><span>tutienda.com</span></div><div id="announcement-preview-stage"><aside class="announcement" data-announcement-preview aria-label="Vista previa de la barra de anuncios"></aside><p data-announcement-hidden-note hidden>${icon('x',{size:14})}La barra está oculta en la tienda</p></div>
+        <div class="announce-device__site" aria-hidden="true"><div class="announce-device__header"><b></b><span></span><i></i></div><div class="announce-device__hero"></div><div class="announce-device__cards"><i></i><i></i><i></i></div></div></div>
+      <p class="announce-preview__state" data-announce-summary></p></aside></div>
+  </section>`;
+
+  const documentsPanel=`<div class="cfg-stack">
+    ${cfgCard('bag','Después de enviar el pedido','Qué pasa con el carrito cuando el cliente abre WhatsApp.',`<fieldset class="choice-tiles"><legend class="sr-only">Comportamiento del carrito</legend>
+      <label class="choice-tile"><input type="radio" name="checkout_behavior" value="keep" ${settings.checkout_behavior!=='clear'?'checked':''}><span class="choice-tile__icon">${icon('bag',{size:18})}</span><strong>Mantener carrito</strong><small>El cliente conserva sus productos por si quiere volver a enviar.</small></label>
+      <label class="choice-tile"><input type="radio" name="checkout_behavior" value="clear" ${settings.checkout_behavior==='clear'?'checked':''}><span class="choice-tile__icon">${icon('trash',{size:18})}</span><strong>Vaciar carrito</strong><small>El carrito queda limpio para una compra nueva.</small></label></fieldset>`)}
+    ${cfgCard('printer','Cotizaciones','Condiciones impresas al final de cada cotización.',cfgField('quote_terms','Condiciones de cotización',s('quote_terms'),{textarea:true,rows:4,full:true,placeholder:'Ej. Precios sujetos a disponibilidad. Cotización válida por 8 días.'}))}
+    ${cfgCard('card','Comprobante de venta','Textos que acompañan cada comprobante.',`<div class="cfg-grid">${cfgField('sale_terms','Condiciones del comprobante',s('sale_terms'),{textarea:true,rows:4,full:true})}${cfgField('warranty_text','Política de garantía',s('warranty_text'),{textarea:true,rows:4,full:true,hint:'Se copia en cada comprobante al crearlo'})}</div>`)}
+    ${cfgCard('star','Mensaje de cumpleaños','Saludo que el equipo revisa antes de enviarlo por WhatsApp.',`<div class="cfg-birthday"><div>${cfgField('birthday_message','Mensaje',s('birthday_message'),{textarea:true,rows:5,full:true,attrs:'maxlength="700"'})}<div class="cfg-birthday__tools"><button class="reason-chip" type="button" data-insert-name>${icon('user',{size:14})} Insertar {nombre}</button><small data-birthday-count></small></div></div>
+      <div class="wa-preview" aria-live="polite"><span class="wa-preview__head">${icon('whatsapp',{size:16})} Vista previa para «Laura»</span><p class="wa-preview__bubble" data-birthday-preview></p></div></div>`)}
+  </div>`;
+
+  const legalPanel=`<div class="cfg-stack">
+    <section class="cfg-card cfg-card--accent"><header class="cfg-card__head"><span class="cfg-card__icon">${icon('shield',{size:20})}</span><div><h2>Aceptación obligatoria en pedidos</h2><p>El servidor rechazará pedidos que no acepten los Términos y la Política de datos vigentes.</p></div></header><div class="cfg-card__body">
+      ${cfgSwitch('legal_acceptance_required','Exigir aceptación al registrar pedidos','Actívalo cuando la versión nueva del sitio esté publicada: una versión anterior no envía la aceptación y sus pedidos serían rechazados.',settings.legal_acceptance_required,'switch-row--main')}
+      <ul class="cfg-checks" data-legal-checks></ul></div></section>
+    <p class="cfg-tip">${icon('info',{size:15})}<span>Si cambias un texto con versión, cambia también su versión: los clientes aceptarán la nueva y cada pedido conserva la que aceptó. Revisa estos textos con asesoría legal.</span></p>
+    <div class="legal-docs">${LEGAL_DOCS.map((doc,position)=>`<details class="legal-doc" data-legal-doc="${doc.text}" ${position===0&&!settings[doc.text]?'open':''}><summary><span class="legal-doc__icon">${icon('info',{size:18})}</span><span class="legal-doc__title"><strong>${doc.title}</strong><small>${doc.help}</small></span><span class="legal-doc__state" data-doc-state></span>${icon('chevronDown',{size:16})}</summary>
+      <div class="legal-doc__body">${cfgField(doc.text,'Texto',s(doc.text),{textarea:true,rows:doc.rows,full:true})}<div class="legal-doc__meta"><small data-doc-count></small>${doc.version?`<div class="legal-doc__version">${cfgField(doc.version,'Versión',s(doc.version),{attrs:'maxlength="40"',placeholder:`${doc.prefix}-AAAA-MM-DD`})}<button class="small-btn" type="button" data-new-version="${doc.version}" data-prefix="${doc.prefix}">${icon('sparkles',{size:14})}<span>Nueva versión</span></button></div>`:''}</div><p class="legal-doc__warn" data-doc-warn hidden>${icon('alert',{size:15})}<span>Cambiaste el texto: actualiza también la versión antes de guardar.</span></p></div></details>`).join('')}</div>
+  </div>`;
+
+  const privacyPanel=`<div class="cfg-stack">
+    ${cfgCard('user','Responsable del tratamiento','Quién responde por los datos y por dónde se atienden las solicitudes.',`<div class="cfg-grid">${cfgField('privacy_controller_name','Responsable',s('privacy_controller_name'),{attrs:'maxlength="160"'})}${cfgField('privacy_controller_id','Identificación',s('privacy_controller_id'),{hint:'Opcional',attrs:'maxlength="60"'})}${cfgField('privacy_requests_channel','Canal para consultas, correcciones y supresión',s('privacy_requests_channel'),{full:true,attrs:'maxlength="200"',placeholder:'Ej. WhatsApp 300 000 0000 o correo'})}</div>`)}
+    ${cfgCard('chart','Analítica de navegación','Solo se registra la navegación de quien lo autorice. Rechazar no impide comprar.',`
+      ${cfgSwitch('tracking_enabled','Registrar navegación de quienes lo autoricen','Necesita responsable, texto y versión de la autorización.',settings.tracking_enabled,'switch-row--main')}
+      <ul class="cfg-checks" data-tracking-checks></ul>
+      <div class="cfg-grid">${cfgField('analytics_consent_text','Texto de autorización de analítica',s('analytics_consent_text'),{textarea:true,rows:4,full:true})}${cfgField('analytics_consent_version','Versión del texto',s('analytics_consent_version'),{attrs:'maxlength="40"'})}${cfgField('personalization_consent_text','Texto de personalización',s('personalization_consent_text'),{textarea:true,rows:3,full:true,hint:'Opcional'})}</div>`)}
+    ${cfgCard('history','Retención y contacto','Cuánto tiempo se guardan los datos y cada cuánto se puede contactar a un cliente.',`<div class="cfg-grid cfg-grid--3">${cfgField('raw_event_retention_days','Eventos crudos',settings.raw_event_retention_days??90,{type:'number',attrs:'min="7" max="730" inputmode="numeric"',after:'días',hint:'7 a 730'})}${cfgField('aggregate_retention_days','Datos agregados',settings.aggregate_retention_days??365,{type:'number',attrs:'min="30" max="1095" inputmode="numeric"',after:'días',hint:'30 a 1095'})}${cfgField('contact_cooldown_days','Espera entre contactos',settings.contact_cooldown_days??7,{type:'number',attrs:'min="0" max="90" inputmode="numeric"',after:'días',hint:'0 a 90'})}</div>`)}
+  </div>`;
+
+  const securityPanel=`<section class="cfg-card security-card"><div class="security-card__account"><span class="security-card__avatar" aria-hidden="true">${escapeHtml((accountEmail[0]||'A').toUpperCase())}</span><div><span class="eyebrow">Cuenta administradora</span><strong>${escapeHtml(accountEmail||'Sin correo')}</strong><small>Rol: ${escapeHtml(staffRole)}</small></div></div>
+    <div class="security-card__row"><span class="cfg-card__icon">${icon('shield',{size:20})}</span><div><h2 id="security-title">Contraseña de acceso</h2><p>Para cambiarla confirmarás tu contraseña actual.</p></div><button id="open-password-change" class="btn btn--primary" type="button">Cambiar contraseña</button></div>
+    <ul class="security-card__tips"><li>${icon('check',{size:15})}Usa mínimo 8 caracteres con letras y números.</li><li>${icon('check',{size:15})}No la compartas: cada persona del equipo debe tener su cuenta.</li><li>${icon('check',{size:15})}Cierra sesión en equipos compartidos.</li></ul></section>`;
+
+  const paymentsPanel=`<div class="cfg-stack"><p class="cfg-alert" data-delivery-alert ${deliveries.some(item=>item.active)?'hidden':''}>${icon('alert',{size:16})}<span><strong>El checkout está bloqueado.</strong> Activa al menos un método de entrega para recibir pedidos.</span></p>
+    <section class="cfg-card"><header class="cfg-card__head"><span class="cfg-card__icon">${icon('wallet',{size:20})}</span><div><h2>Métodos de pago</h2><p>Se muestran en el checkout con su logo e instrucciones.</p></div><button id="new-payment" class="small-btn small-btn--primary" type="button">${icon('plus',{size:15})}<span>Agregar</span></button></header><div id="payment-list">${paymentRows(payments)}</div></section>
+    <section class="cfg-card"><header class="cfg-card__head"><span class="cfg-card__icon">${icon('truck',{size:20})}</span><div><h2>Métodos de entrega</h2><p>Retiro en tienda, domicilio o envío nacional, con su costo base.</p></div><button id="new-delivery" class="small-btn small-btn--primary" type="button">${icon('plus',{size:15})}<span>Agregar</span></button></header><div id="delivery-list">${deliveryRows(deliveries)}</div></section></div>`;
+
+  $('#admin-content').innerHTML=heading('Tu negocio','Configuración','Todo lo que define tu tienda, organizado por temas. Elige una sección, edita y guarda con la barra inferior.')
+    +`<section class="cfg-status" data-status aria-live="polite"></section>
+    <div class="cfg-layout"><nav class="cfg-nav" role="tablist" aria-label="Secciones de configuración">${SETTINGS_TABS.map(tab=>`<button type="button" role="tab" id="cfg-tab-${tab.key}" data-tab="${tab.key}" aria-controls="cfg-panel-${tab.key}" aria-selected="false" tabindex="-1"><span class="cfg-nav__icon">${icon(tab.icon,{size:18})}</span><span class="cfg-nav__text"><strong>${tab.label}</strong><small>${tab.sub}</small></span><i class="cfg-nav__dot" data-dirty-dot hidden title="Cambios sin guardar"></i><b class="cfg-nav__badge" data-pending-badge hidden></b></button>`).join('')}</nav>
+    <div class="cfg-panels" id="cfg-panels">
+      <form id="settings-form" class="cfg-form" novalidate>
+        <div class="cfg-panel" data-tab-panel="business" role="tabpanel" id="cfg-panel-business" aria-labelledby="cfg-tab-business">${businessPanel}</div>
+        <div class="cfg-panel" data-tab-panel="storefront" role="tabpanel" id="cfg-panel-storefront" aria-labelledby="cfg-tab-storefront">${storefrontPanel}</div>
+        <div class="cfg-panel" data-tab-panel="documents" role="tabpanel" id="cfg-panel-documents" aria-labelledby="cfg-tab-documents">${documentsPanel}</div>
+        <div class="cfg-panel" data-tab-panel="legal" role="tabpanel" id="cfg-panel-legal" aria-labelledby="cfg-tab-legal">${legalPanel}</div>
+        <div class="cfg-panel" data-tab-panel="privacy" role="tabpanel" id="cfg-panel-privacy" aria-labelledby="cfg-tab-privacy">${privacyPanel}</div>
+      </form>
+      <div class="cfg-panel" data-tab-panel="storefront" id="banner-editor-root"></div>
+      <div class="cfg-panel" data-tab-panel="payments" role="tabpanel" id="cfg-panel-payments" aria-labelledby="cfg-tab-payments">${paymentsPanel}</div>
+      <div class="cfg-panel" data-tab-panel="privacy" data-maintenance></div>
+      <div class="cfg-panel" data-tab-panel="security" role="tabpanel" id="cfg-panel-security" aria-labelledby="cfg-tab-security">${securityPanel}</div>
+      <div class="savebar" data-savebar hidden><div class="savebar__text"><strong data-savebar-title>Cambios sin guardar</strong><small data-savebar-help></small></div><div class="savebar__actions"><button class="btn btn--ghost" type="button" data-discard>Descartar</button><button class="btn btn--primary" type="submit" form="settings-form">${icon('check',{size:18})}<span>Guardar configuración</span></button></div></div>
+    </div></div>`;
+
+  const root=$('#admin-content');const form=$('#settings-form');
+  const bannerRoot=$('#banner-editor-root');bannerRoot.classList.add('admin-form');
+  const bannerCleanup=mountBannerEditor(bannerRoot,settings,banners,{unavailable:bannerLoadFailed||settings.banner_enabled===undefined});
+  const enabledInput=form.elements.announcement_enabled;const staticInput=form.elements.announcement_static_text;const intervalInput=form.elements.announcement_interval_seconds;
+  const staticPanel=form.querySelector('[data-announcement-static]');const carouselPanel=form.querySelector('[data-announcement-carousel]');
+  const messageList=$('#announcement-message-list');const formError=$('#announcement-form-error');
+  const previewRoot=form.querySelector('[data-announcement-preview]');const hiddenNote=form.querySelector('[data-announcement-hidden-note]');
+  const logoInput=$('#site-logo');const value=name=>String(form.elements[name]?.value||'').trim();
+  const tabOf=element=>element?.closest('[data-tab-panel]')?.dataset.tabPanel||'business';
+
+  // --- Pestañas
+  const openTab=(key,{scroll=true}={})=>{
+    root.querySelectorAll('[data-tab]').forEach(button=>{const on=button.dataset.tab===key;button.setAttribute('aria-selected',String(on));button.tabIndex=on?0:-1;button.classList.toggle('is-active',on);if(on&&matchMedia('(max-width: 979px)').matches)button.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'});});
+    root.querySelectorAll('[data-tab-panel]').forEach(panel=>{panel.hidden=panel.dataset.tabPanel!==key;});
+    const query=new URLSearchParams(location.search);query.set('section','settings');query.set('tab',key);history.replaceState({},'',`${location.pathname}?${query}`);
+    if(scroll){const top=root.querySelector('.cfg-layout').getBoundingClientRect().top+scrollY-12;if(scrollY>top)window.scrollTo({top,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}
+  };
+  root.querySelector('.cfg-nav').addEventListener('click',event=>{const button=event.target.closest('[data-tab]');if(button)openTab(button.dataset.tab);});
+  root.querySelector('.cfg-nav').addEventListener('keydown',event=>{
+    if(!['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    const buttons=[...root.querySelectorAll('[data-tab]')];const current=buttons.indexOf(document.activeElement);if(current<0)return;event.preventDefault();
+    const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(current+(['ArrowDown','ArrowRight'].includes(event.key)?1:-1)+buttons.length)%buttons.length;
+    buttons[next].focus();openTab(buttons[next].dataset.tab,{scroll:false});
+  });
+  const goTo=(tab,element)=>{openTab(tab,{scroll:!element});if(element){element.closest('details')?.setAttribute('open','');requestAnimationFrame(()=>{element.scrollIntoView({block:'center',behavior:'smooth'});element.focus({preventScroll:true});});}};
+
+  // --- Estado de la configuración (progreso y pendientes)
+  const whatsappDigits=()=>value('whatsapp').replace(/\D/g,'');
+  const checks=()=>[
+    {tab:'business',field:'business_name',label:'Nombre comercial',ok:Boolean(value('business_name'))},
+    {tab:'business',field:'whatsapp',label:'WhatsApp',ok:/^[1-9]\d{7,14}$/.test(whatsappDigits())},
+    {tab:'business',field:'city',label:'Ciudad y dirección',ok:Boolean(value('city')&&value('address'))},
+    {tab:'business',field:'schedule',label:'Horario',ok:Boolean(value('schedule'))},
+    {tab:'business',field:'logo',label:'Logo para documentos',ok:Boolean(settings.logo_url||logoInput.files[0])},
+    {tab:'payments',label:'Método de pago activo',ok:payments.some(item=>item.active)},
+    {tab:'payments',label:'Método de entrega activo',ok:deliveries.some(item=>item.active)},
+    {tab:'legal',field:'terms_text',label:'Términos con versión',ok:Boolean(value('terms_text')&&value('terms_version'))},
+    {tab:'legal',field:'data_policy_text',label:'Política de datos con versión',ok:Boolean(value('data_policy_text')&&value('data_policy_version'))}
+  ];
+  const renderStatus=()=>{
+    const list=checks();const done=list.filter(item=>item.ok).length;const percent=Math.round((done/list.length)*100);const pending=list.filter(item=>!item.ok);
+    root.querySelector('[data-status]').innerHTML=`<div class="cfg-ring" style="--p:${percent}" role="img" aria-label="Configuración completa al ${percent} %"><span>${percent}<small>%</small></span></div>
+      <div class="cfg-status__text"><strong>${pending.length?`Tu tienda está ${percent>=70?'casi lista':'en camino'}`:'¡Tu tienda está lista!'}</strong><small>${pending.length?`${done} de ${list.length} puntos clave configurados. Toca un pendiente para completarlo.`:'Todos los puntos clave están configurados.'}</small></div>
+      ${pending.length?`<div class="cfg-status__chips">${pending.map(item=>`<button type="button" class="cfg-pending" data-goto="${item.tab}" data-field="${item.field||''}">${icon('alert',{size:13})}${item.label}</button>`).join('')}</div>`:`<span class="cfg-status__done">${icon('checkCircle',{size:22})}</span>`}`;
+    SETTINGS_TABS.forEach(tab=>{const count=pending.filter(item=>item.tab===tab.key).length;const badge=root.querySelector(`[data-tab="${tab.key}"] [data-pending-badge]`);badge.hidden=!count;badge.textContent=count;badge.title=`${count} pendiente(s)`;});
+  };
+  root.querySelector('[data-status]').addEventListener('click',event=>{const chip=event.target.closest('[data-goto]');if(!chip)return;const field=chip.dataset.field==='logo'?root.querySelector('label[for="site-logo"]'):chip.dataset.field?form.elements[chip.dataset.field]:null;goTo(chip.dataset.goto,field);});
+
+  // --- Negocio: logo, WhatsApp, horario y tarjeta de vista previa
+  const renderBusinessCard=()=>{
+    const name=value('business_name')||'Tu negocio';const logo=logoUrl||(settings.logo_url?localAsset(settings.logo_url):'');const digits=whatsappDigits();
+    const rows=[[icon('pin',{size:15}),[value('address'),value('city')].filter(Boolean).join(', ')],[icon('clock',{size:15}),value('schedule')],[icon('whatsapp',{size:15}),digits?`+${digits}`:''],[icon('phone',{size:15}),value('phone')],[icon('mail',{size:15}),value('email')]].filter(([,text])=>text);
+    const socials=[['instagram',value('instagram')],['facebook',value('facebook')],['tiktok',value('tiktok')]].filter(([,text])=>text);
+    root.querySelector('[data-biz-card]').innerHTML=`<div class="biz-card__top"><span class="biz-card__logo">${logo?`<img src="${escapeHtml(logo)}" alt="">`:escapeHtml(categoryInitials(name))}</span><div><strong>${escapeHtml(name)}</strong><small>${value('tax_id')?`NIT ${escapeHtml(value('tax_id'))}`:'Tienda oficial'}</small></div></div>
+      ${rows.length?`<ul>${rows.map(([ic,text])=>`<li>${ic}<span>${escapeHtml(text)}</span></li>`).join('')}</ul>`:'<p class="biz-card__empty">Completa tus datos de contacto para verlos aquí.</p>'}
+      ${socials.length?`<div class="biz-card__social">${socials.map(([name,text])=>`<span title="${escapeHtml(text)}">${icon(name,{size:16})}</span>`).join('')}</div>`:''}
+      ${digits&&/^[1-9]\d{7,14}$/.test(digits)?`<span class="biz-card__cta">${icon('whatsapp',{size:16})}Escríbenos por WhatsApp</span>`:''}`;
+    const hint=root.querySelector('[data-whatsapp-hint]');
+    hint.className=`cfg-hint cfg-field--full ${!digits?'':/^[1-9]\d{7,14}$/.test(digits)?'is-ok':'is-bad'}`;
+    hint.innerHTML=!digits?`${icon('info',{size:14})}<span>Sin WhatsApp, el checkout y el botón de contacto quedan deshabilitados.</span>`
+      :/^[1-9]\d{7,14}$/.test(digits)?`${icon('checkCircle',{size:14})}<span>Los pedidos llegarán a <b>+${escapeHtml(digits)}</b>.</span><a href="https://wa.me/${escapeHtml(digits)}" target="_blank" rel="noopener">Probar ${icon('external',{size:13})}</a>`
+        :`${icon('alert',{size:14})}<span>Incluye el indicativo del país: 57 seguido de los 10 dígitos.</span>`;
+  };
+  logoInput.addEventListener('change',()=>{
+    const file=logoInput.files[0];if(!file)return;
+    if(file.size>5242880){toast('El logo debe pesar máximo 5 MB.','error');logoInput.value='';return;}
+    if(logoUrl)URL.revokeObjectURL(logoUrl);logoUrl=URL.createObjectURL(file);
+    root.querySelector('[data-logo-preview]').innerHTML=`<img src="${escapeHtml(logoUrl)}" alt="Nuevo logo"><em>Nuevo</em>`;root.querySelector('[data-logo-label]').textContent='Elegir otro';
+    renderBusinessCard();refreshDirty();
+  });
+  root.querySelectorAll('[data-schedule]').forEach(chip=>chip.addEventListener('click',()=>{form.elements.schedule.value=chip.dataset.schedule;form.elements.schedule.dispatchEvent(new Event('input',{bubbles:true}));}));
+
+  // --- Documentos: cumpleaños
+  const birthday=form.elements.birthday_message;
+  const renderBirthday=()=>{const text=birthday.value.trim()||`Hola {nombre}, te deseamos un feliz cumpleaños de parte de ${value('business_name')||'nuestra tienda'}.`;root.querySelector('[data-birthday-preview]').innerHTML=escapeHtml(text).replaceAll('{nombre}','<b>Laura</b>');root.querySelector('[data-birthday-count]').textContent=`${birthday.value.length}/700`;};
+  root.querySelector('[data-insert-name]').addEventListener('click',()=>{const start=birthday.selectionStart??birthday.value.length;const end=birthday.selectionEnd??start;birthday.setRangeText('{nombre}',start,end,'end');birthday.focus();birthday.dispatchEvent(new Event('input',{bubbles:true}));});
+
+  // --- Legal y privacidad: estados, versiones y requisitos
+  const checkItem=(ok,text)=>`<li class="${ok?'is-ok':''}">${icon(ok?'checkCircle':'alert',{size:15})}<span>${text}</span></li>`;
+  const renderLegal=()=>{
+    LEGAL_DOCS.forEach(doc=>{
+      const box=root.querySelector(`[data-legal-doc="${doc.text}"]`);const text=value(doc.text);const changed=text!==String(settings[doc.text]||'').trim();
+      const versionStale=Boolean(doc.version&&settings[doc.text]&&changed&&value(doc.version)===String(settings[doc.version]||''));
+      box.querySelector('[data-doc-warn]').hidden=!versionStale;box.classList.toggle('has-warning',versionStale);
+      box.querySelector('[data-doc-count]').textContent=text?`${text.split(/\s+/).length} palabras`:'Sin texto';
+      const state=!text?['Pendiente','warning']:versionStale?['Falta versión','danger']:changed?['Sin guardar','info']:doc.version&&value(doc.version)?[`Versión ${value(doc.version)}`,'success']:['Publicado','success'];
+      box.querySelector('[data-doc-state]').innerHTML=`<span class="status-pill status-pill--${state[1]}">${escapeHtml(state[0])}</span>`;
+    });
+    root.querySelector('[data-legal-checks]').innerHTML=checkItem(Boolean(value('terms_text')&&value('terms_version')),'Términos y condiciones con versión')+checkItem(Boolean(value('data_policy_text')&&value('data_policy_version')),'Política de datos con versión');
+    root.querySelector('[data-tracking-checks]').innerHTML=checkItem(Boolean(value('privacy_controller_name')),'Responsable del tratamiento')+checkItem(Boolean(value('analytics_consent_text')),'Texto de autorización de analítica')+checkItem(Boolean(value('analytics_consent_version')),'Versión del texto de analítica');
+  };
+  root.querySelectorAll('[data-new-version]').forEach(button=>button.addEventListener('click',()=>{const input=form.elements[button.dataset.newVersion];input.value=versionSuggestion(button.dataset.prefix,input.value);input.dispatchEvent(new Event('input',{bubbles:true}));toast(`Versión ${input.value} lista: se aplicará al guardar`);}));
+
+  // --- Barra de anuncios con vista previa
   const currentAnnouncement=()=>({enabled:enabledInput.checked,mode:form.elements.announcement_mode.value,staticText:staticInput.value,intervalSeconds:Number(intervalInput.value),messages:announcement.messages});
   const clearAnnouncementError=()=>{formError.hidden=true;formError.textContent='';form.querySelectorAll('[aria-invalid="true"]').forEach(input=>input.removeAttribute('aria-invalid'));};
-  const updatePreview=()=>{previewController.stop();const current=currentAnnouncement();hiddenNote.hidden=current.enabled;previewController=createAnnouncementController(previewRoot,{announcement_enabled:current.enabled,announcement_mode:current.mode,announcement_static_text:current.staticText,announcement_interval_seconds:current.intervalSeconds,announcement_messages:current.messages});};
-  const renderMessages=(focusId='')=>{messageList.replaceChildren();announcement.messages.forEach((message,index)=>{message.position=index+1;messageList.append(announcementMessageRow(message,index,announcement.messages.length,action=>{clearAnnouncementError();if(action?.move!=null){const target=action.move+action.direction;[announcement.messages[action.move],announcement.messages[target]]=[announcement.messages[target],announcement.messages[action.move]];renderMessages(message.id);}else if(action?.remove!=null){announcement.messages.splice(action.remove,1);renderMessages();}else updatePreview();}));});if(!announcement.messages.length){const empty=document.createElement('p');empty.className='announcement-message-empty';empty.textContent='Aún no hay mensajes. Agrega uno para configurar el carrusel.';messageList.append(empty);}updatePreview();if(focusId)requestAnimationFrame(()=>messageList.querySelector(`[data-message-text="${CSS.escape(focusId)}"]`)?.focus());};
-  const updateInterface=()=>{announcement.enabled=enabledInput.checked;announcement.mode=form.elements.announcement_mode.value;staticPanel.hidden=announcement.mode!=='static';carouselPanel.hidden=announcement.mode!=='carousel';staticInput.required=announcement.enabled&&announcement.mode==='static';intervalInput.disabled=announcement.mode!=='carousel';staticInput.value=announcement.staticText;intervalInput.value=announcement.intervalSeconds;$('#announcement-static-count').textContent=`${staticInput.value.length}/${ANNOUNCEMENT_TEXT_LIMIT} caracteres`;renderMessages();};
-  const showAnnouncementError=result=>{formError.textContent=result.message;formError.hidden=false;let input=result.field==='static'?staticInput:result.field==='interval'?intervalInput:messageList.querySelector('input[data-message-text]');if(input){input.setAttribute('aria-invalid','true');input.focus();}else formError.focus();};
-  enabledInput.checked=announcement.enabled;form.elements.announcement_mode.value=announcement.mode;updateInterface();
+  const updatePreview=()=>{
+    previewController.stop();const current=currentAnnouncement();
+    root.querySelector('[data-announce-frame]').dataset.device=previewDevice;
+    root.querySelectorAll('[data-announce-device]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.announceDevice===previewDevice)));
+    root.querySelector('[data-announce-state]').textContent=current.enabled?'Visible':'Oculta';
+    root.querySelector('.announce-card').classList.toggle('is-off',!current.enabled);
+    previewController=createAnnouncementController(previewRoot,{announcement_enabled:current.enabled,announcement_mode:current.mode,announcement_static_text:current.staticText,announcement_interval_seconds:current.intervalSeconds,announcement_messages:current.messages});
+    // Encendida pero sin texto que mostrar: se explica en lugar de dejar la franja vacía.
+    const empty=current.enabled&&previewRoot.hidden;hiddenNote.hidden=current.enabled&&!empty;
+    hiddenNote.innerHTML=empty?`${icon('info',{size:14})}Escribe o activa un mensaje para verlo aquí`:`${icon('x',{size:14})}La barra está oculta en la tienda`;
+    const visible=current.messages.filter(message=>message.enabled&&message.text.trim()).length;
+    root.querySelector('[data-announce-summary]').innerHTML=!current.enabled?`${icon('info',{size:14})}La barra no aparecerá en la tienda.`:current.mode==='static'?`${icon('checkCircle',{size:14})}Mensaje fijo visible en todas las páginas.`:`${icon('history',{size:14})}${visible} ${visible===1?'mensaje visible':'mensajes visibles'} · cambia cada ${Number(current.intervalSeconds)||'—'} s`;
+    root.querySelectorAll('[data-interval]').forEach(chip=>chip.classList.toggle('is-active',Number(chip.dataset.interval)===Number(intervalInput.value)));
+    refreshDirty();
+  };
+  const renderMessages=(focusId='')=>{
+    messageList.replaceChildren();
+    announcement.messages.forEach((message,index)=>{message.position=index+1;messageList.append(announcementMessageRow(message,index,announcement.messages.length,action=>{
+      clearAnnouncementError();
+      if(action?.move!=null){const target=action.move+action.direction;[announcement.messages[action.move],announcement.messages[target]]=[announcement.messages[target],announcement.messages[action.move]];renderMessages(message.id);}
+      else if(action?.remove!=null){announcement.messages.splice(action.remove,1);renderMessages();}
+      else updatePreview();
+    }));});
+    if(!announcement.messages.length){const empty=document.createElement('p');empty.className='announcement-message-empty';empty.textContent='Aún no hay mensajes. Agrega uno o usa una idea rápida.';messageList.append(empty);}
+    $('#add-announcement-message').disabled=announcement.messages.length>=10;
+    updatePreview();
+    if(focusId)requestAnimationFrame(()=>messageList.querySelector(`[data-message-text="${CSS.escape(focusId)}"]`)?.focus());
+  };
+  const updateInterface=()=>{
+    announcement.enabled=enabledInput.checked;announcement.mode=form.elements.announcement_mode.value;
+    staticPanel.hidden=announcement.mode!=='static';carouselPanel.hidden=announcement.mode!=='carousel';intervalInput.disabled=announcement.mode!=='carousel';
+    staticInput.value=announcement.staticText;intervalInput.value=announcement.intervalSeconds;
+    $('#announcement-static-count').textContent=`${staticInput.value.length}/${ANNOUNCEMENT_TEXT_LIMIT} caracteres`;renderMessages();
+  };
+  const showAnnouncementError=result=>{
+    openTab('storefront');formError.textContent=result.message;formError.hidden=false;
+    const input=result.field==='static'?staticInput:result.field==='interval'?intervalInput:[...messageList.querySelectorAll('input[data-message-text]')].find(item=>!item.value.trim())||messageList.querySelector('input[data-message-text]');
+    if(input){input.setAttribute('aria-invalid','true');input.focus();}else formError.focus();
+  };
+  const addMessage=(text='')=>{const id=globalThis.crypto?.randomUUID?.()||`announcement-${Date.now()}`;announcement.messages.push({id,text,enabled:true,position:announcement.messages.length+1});renderMessages(text?'':id);};
   enabledInput.addEventListener('change',()=>{clearAnnouncementError();announcement.enabled=enabledInput.checked;updatePreview();});
-  form.querySelectorAll('[name="announcement_mode"]').forEach(input=>input.addEventListener('change',()=>{clearAnnouncementError();announcement.mode=input.value;updateInterface();}));
+  form.querySelectorAll('[name="announcement_mode"]').forEach(input=>input.addEventListener('change',()=>{clearAnnouncementError();announcement.staticText=staticInput.value;announcement.intervalSeconds=Number(intervalInput.value)||announcement.intervalSeconds;announcement.mode=input.value;updateInterface();}));
   staticInput.addEventListener('input',()=>{announcement.staticText=staticInput.value;$('#announcement-static-count').textContent=`${staticInput.value.length}/${ANNOUNCEMENT_TEXT_LIMIT} caracteres`;staticInput.removeAttribute('aria-invalid');formError.hidden=true;updatePreview();});
-  intervalInput.addEventListener('input',()=>{intervalInput.removeAttribute('aria-invalid');formError.hidden=true;updatePreview();});
-  $('#add-announcement-message').addEventListener('click',()=>{const id=globalThis.crypto?.randomUUID?.()||`announcement-${Date.now()}`;announcement.messages.push({id,text:'',enabled:true,position:announcement.messages.length+1});renderMessages(id);});
-  activeSectionCleanup=()=>{previewController.stop();bannerCleanup();};
-  form.addEventListener('submit',async event=>{event.preventDefault();if(saving)return;clearAnnouncementError();const current=currentAnnouncement();const validation=validateAnnouncement(current);if(!validation.valid){showAnnouncementError(validation);return;}const button=event.submitter||form.querySelector('[type="submit"]');const data=new FormData(form);const fields=['business_name','whatsapp','phone','email','address','city','schedule','instagram','facebook','tiktok','maps_url','checkout_behavior','data_policy_text','data_policy_version','marketing_consent_text','marketing_consent_version','quote_terms','sale_terms','tax_id','warranty_text','birthday_message','privacy_controller_name','privacy_controller_id','privacy_requests_channel','analytics_consent_text','analytics_consent_version','personalization_consent_text','terms_text','terms_version','shipping_policy_text','returns_policy_text','restock_consent_text'];const values={};fields.forEach(field=>values[field]=String(data.get(field)||'').trim()||null);values.whatsapp=values.whatsapp?values.whatsapp.replace(/\D/g,'')||null:null;if(values.whatsapp&&!/^[1-9]\d{7,14}$/.test(values.whatsapp)){toast('El WhatsApp debe incluir el indicativo del país, por ejemplo 57 seguido del número.','error');return;}if(!values.birthday_message)values.birthday_message=`Hola {nombre}, te deseamos un feliz cumpleaños de parte de ${values.business_name||'nuestra tienda'}.`;values.tracking_enabled=data.has('tracking_enabled');values.legal_acceptance_required=data.has('legal_acceptance_required');if(values.legal_acceptance_required&&!(values.terms_text&&values.terms_version&&values.data_policy_text&&values.data_policy_version)){toast('Para exigir la aceptación publica los términos y la política de datos con sus versiones.','error');return;}if(values.terms_text!==(settings.terms_text||null)&&values.terms_version===(settings.terms_version||null)&&settings.terms_text){toast('Cambiaste los términos: actualiza también su versión.','error');return;}if(values.data_policy_text!==(settings.data_policy_text||null)&&values.data_policy_version===(settings.data_policy_version||null)&&settings.data_policy_text){toast('Cambiaste la política de datos: actualiza también su versión.','error');return;}values.legal_updated_at=new Date().toISOString();['raw_event_retention_days','aggregate_retention_days','contact_cooldown_days'].forEach(field=>{values[field]=Number(data.get(field));});if(values.tracking_enabled&&!(values.analytics_consent_text&&values.analytics_consent_version&&values.privacy_controller_name)){toast('Para registrar navegación configura responsable, texto y versión de la autorización de analítica.','error');return;}Object.assign(values,announcementValues(current));saving=true;setButtonLoading(button,true,'Guardando…');try{const file=$('#site-logo').files[0];if(file)values.logo_url=await uploadImage('site-assets',file,'logo');const saved=await saveSettings(values);invalidateCrmSettings();announcement=normalizeAnnouncementSettings(saved);announcement.messages=announcement.messages.map(message=>({...message}));enabledInput.checked=announcement.enabled;form.elements.announcement_mode.value=announcement.mode;updateInterface();toast('Configuración guardada');}catch(error){console.error(error);toast('No pudimos guardar la configuración. Tus cambios siguen en el formulario.','error');}finally{saving=false;setButtonLoading(button,false);}});
-  $('#open-password-change').addEventListener('click',event=>openPasswordChangeModal(event.currentTarget));$('#new-payment').addEventListener('click',()=>openPaymentForm(null,payments));bindPayments(payments);$('#new-delivery').addEventListener('click',()=>openDeliveryForm(null,deliveries));bindDeliveries(deliveries);
+  intervalInput.addEventListener('input',()=>{intervalInput.removeAttribute('aria-invalid');formError.hidden=true;announcement.intervalSeconds=Number(intervalInput.value);updatePreview();});
+  root.querySelectorAll('[data-interval]').forEach(chip=>chip.addEventListener('click',()=>{intervalInput.value=chip.dataset.interval;intervalInput.dispatchEvent(new Event('input',{bubbles:true}));}));
+  $('#add-announcement-message').addEventListener('click',()=>addMessage());
+  root.querySelectorAll('[data-template]').forEach(chip=>chip.addEventListener('click',()=>{
+    const text=ANNOUNCEMENT_TEMPLATES[Number(chip.dataset.template)];clearAnnouncementError();
+    if(form.elements.announcement_mode.value==='static'){staticInput.value=text;staticInput.dispatchEvent(new Event('input',{bubbles:true}));}
+    else if(announcement.messages.length<10){addMessage(text);toast('Mensaje agregado al carrusel');}
+  }));
+  root.querySelectorAll('[data-announce-device]').forEach(button=>button.addEventListener('click',()=>{previewDevice=button.dataset.announceDevice;updatePreview();}));
+
+  // --- Detección de cambios: compara con los valores iniciales por pestaña
+  let snapshot=new Map();let announcementSnapshot='';
+  const fieldState=element=>['checkbox','radio'].includes(element.type)?element.checked:element.value;
+  const trackable=()=>[...form.elements].filter(element=>element.name&&!element.matches('[data-message-text],#site-logo')&&!element.closest('.announcement-message'));
+  const takeSnapshot=()=>{snapshot=new Map(trackable().map(element=>[element,fieldState(element)]));announcementSnapshot=JSON.stringify(announcementValues(currentAnnouncement()));};
+  const dirtyTabs=()=>{
+    const tabs=new Set();if(!snapshot.size)return tabs;
+    trackable().forEach(element=>{if(snapshot.get(element)!==fieldState(element))tabs.add(tabOf(element));});
+    if(JSON.stringify(announcementValues(currentAnnouncement()))!==announcementSnapshot)tabs.add('storefront');
+    if(logoInput.files[0])tabs.add('business');
+    return tabs;
+  };
+  function refreshDirty(){
+    const tabs=dirtyTabs();const bar=root.querySelector('[data-savebar]');if(!bar)return;
+    root.querySelectorAll('[data-tab]').forEach(button=>{button.querySelector('[data-dirty-dot]').hidden=!tabs.has(button.dataset.tab);});
+    bar.hidden=!tabs.size&&!saving;
+    root.querySelector('[data-savebar-help]').textContent=tabs.size?`En: ${SETTINGS_TABS.filter(tab=>tabs.has(tab.key)).map(tab=>tab.label).join(', ')}`:'';
+  }
+  const onFieldChange=event=>{
+    const panel=tabOf(event.target);
+    if(panel==='business'||event.target.name==='business_name'){renderBusinessCard();renderBirthday();}
+    if(event.target.name==='birthday_message')renderBirthday();
+    if(['legal','privacy'].includes(panel))renderLegal();
+    renderStatus();refreshDirty();
+  };
+  form.addEventListener('input',onFieldChange);form.addEventListener('change',onFieldChange);
+  const beforeUnload=event=>{if(dirtyTabs().size){event.preventDefault();event.returnValue='';}};
+  window.addEventListener('beforeunload',beforeUnload);
+  root.querySelector('[data-discard]').addEventListener('click',async event=>{if(!await confirmAction('Se descartarán los cambios que no has guardado en la configuración.','Descartar cambios',{confirmLabel:'Descartar',trigger:event.currentTarget}))return;renderSettings();});
+
+  enabledInput.checked=announcement.enabled;form.elements.announcement_mode.value=announcement.mode;
+  updateInterface();renderBusinessCard();renderBirthday();renderLegal();renderStatus();takeSnapshot();refreshDirty();
+  openTab(initialTab,{scroll:false});
+
+  activeSectionCleanup=()=>{previewController.stop();bannerCleanup();window.removeEventListener('beforeunload',beforeUnload);if(logoUrl)URL.revokeObjectURL(logoUrl);};
+
+  // --- Guardado con validación que lleva a la pestaña del problema
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(saving)return;clearAnnouncementError();
+    const fail=(message,name)=>{const element=name?form.elements[name]:null;goTo(element?tabOf(element):'business',element);toast(message,'error');};
+    const invalid=[...form.elements].find(element=>element.willValidate&&!element.checkValidity());
+    if(invalid){goTo(tabOf(invalid),invalid);requestAnimationFrame(()=>invalid.reportValidity());return;}
+    const current=currentAnnouncement();const validation=validateAnnouncement(current);
+    if(!validation.valid){showAnnouncementError(validation);return;}
+    const button=event.submitter||root.querySelector('[data-savebar] [type="submit"]');const data=new FormData(form);
+    const fields=['business_name','whatsapp','phone','email','address','city','schedule','instagram','facebook','tiktok','maps_url','checkout_behavior','data_policy_text','data_policy_version','marketing_consent_text','marketing_consent_version','quote_terms','sale_terms','tax_id','warranty_text','birthday_message','privacy_controller_name','privacy_controller_id','privacy_requests_channel','analytics_consent_text','analytics_consent_version','personalization_consent_text','terms_text','terms_version','shipping_policy_text','returns_policy_text','restock_consent_text'];
+    const values={};fields.forEach(field=>values[field]=String(data.get(field)||'').trim()||null);
+    values.whatsapp=values.whatsapp?values.whatsapp.replace(/\D/g,'')||null:null;
+    if(values.whatsapp&&!/^[1-9]\d{7,14}$/.test(values.whatsapp))return fail('El WhatsApp debe incluir el indicativo del país, por ejemplo 57 seguido del número.','whatsapp');
+    if(!values.birthday_message)values.birthday_message=`Hola {nombre}, te deseamos un feliz cumpleaños de parte de ${values.business_name||'nuestra tienda'}.`;
+    values.tracking_enabled=data.has('tracking_enabled');values.legal_acceptance_required=data.has('legal_acceptance_required');
+    if(values.legal_acceptance_required&&!(values.terms_text&&values.terms_version&&values.data_policy_text&&values.data_policy_version))return fail('Para exigir la aceptación publica los términos y la política de datos con sus versiones.',!(values.terms_text&&values.terms_version)?(values.terms_text?'terms_version':'terms_text'):(values.data_policy_text?'data_policy_version':'data_policy_text'));
+    if(values.terms_text!==(settings.terms_text||null)&&values.terms_version===(settings.terms_version||null)&&settings.terms_text)return fail('Cambiaste los términos: actualiza también su versión.','terms_version');
+    if(values.data_policy_text!==(settings.data_policy_text||null)&&values.data_policy_version===(settings.data_policy_version||null)&&settings.data_policy_text)return fail('Cambiaste la política de datos: actualiza también su versión.','data_policy_version');
+    values.legal_updated_at=new Date().toISOString();
+    ['raw_event_retention_days','aggregate_retention_days','contact_cooldown_days'].forEach(field=>{values[field]=Number(data.get(field));});
+    if(values.tracking_enabled&&!(values.analytics_consent_text&&values.analytics_consent_version&&values.privacy_controller_name))return fail('Para registrar navegación configura responsable, texto y versión de la autorización de analítica.',!values.privacy_controller_name?'privacy_controller_name':!values.analytics_consent_text?'analytics_consent_text':'analytics_consent_version');
+    Object.assign(values,announcementValues(current));
+    saving=true;setButtonLoading(button,true,'Guardando…');root.querySelector('[data-savebar-title]').textContent='Guardando…';
+    try{
+      const file=logoInput.files[0];if(file)values.logo_url=await uploadImage('site-assets',file,'logo');
+      const saved=await saveSettings(values);invalidateCrmSettings();Object.assign(settings,saved||values);
+      announcement=normalizeAnnouncementSettings(saved||values);announcement.messages=announcement.messages.map(message=>({...message}));
+      enabledInput.checked=announcement.enabled;form.elements.announcement_mode.value=announcement.mode;logoInput.value='';
+      updateInterface();renderLegal();renderBusinessCard();saving=false;takeSnapshot();renderStatus();refreshDirty();
+      toast('Configuración guardada');
+    }catch(error){console.error(error);toast('No pudimos guardar la configuración. Tus cambios siguen en el formulario.','error');}
+    finally{saving=false;setButtonLoading(button,false);root.querySelector('[data-savebar-title]').textContent='Cambios sin guardar';refreshDirty();}
+  });
+
+  $('#open-password-change').addEventListener('click',event=>openPasswordChangeModal(event.currentTarget));
+  $('#new-payment').addEventListener('click',event=>openPaymentForm(null,payments,event.currentTarget));bindPayments(payments);
+  $('#new-delivery').addEventListener('click',event=>openDeliveryForm(null,deliveries,event.currentTarget));bindDeliveries(deliveries);
   renderPrivacyMaintenance(settings);
 }
+
 // Retención de navegación y estado del plan (solo lectura; el plan lo administra el operador).
 async function renderPrivacyMaintenance(settings){
-  const panel=document.createElement('section');panel.className='admin-panel';panel.setAttribute('aria-labelledby','maintenance-title');
-  panel.innerHTML=`<div class="admin-panel__head"><h2 id="maintenance-title">Retención de datos de navegación</h2><button class="btn btn--ghost" data-purge type="button">Depurar ahora</button></div><p class="form-help">Agrega y borra eventos crudos con más de ${Number(settings.raw_event_retention_days??90)} días y agregados con más de ${Number(settings.aggregate_retention_days??365)} días. Programa esta tarea en el proyecto (ver docs/TECNICO_CRM.md) o ejecútala aquí.</p><ul class="history-list" data-runs><li><span>Cargando…</span></li></ul><div data-plan></div>`;
-  $('#admin-content .security-panel')?.after(panel);
-  const runs=async()=>{try{const items=await getMaintenanceRuns();panel.querySelector('[data-runs]').innerHTML=items.length?items.map(item=>`<li><span>${escapeHtml(item.task)}</span><small>${new Date(item.ran_at).toLocaleString('es-CO',{timeZone:'America/Bogota'})} · ${escapeHtml(JSON.stringify(item.result))}</small></li>`).join(''):'<li><span>Sin ejecuciones registradas.</span></li>';}catch{panel.querySelector('[data-runs]').innerHTML='<li><span>No disponible.</span></li>';}};
+  const panel=$('#admin-content [data-maintenance]');if(!panel)return;
+  panel.innerHTML=`<section class="cfg-card" aria-labelledby="maintenance-title"><header class="cfg-card__head"><span class="cfg-card__icon">${icon('trash',{size:20})}</span><div><h2 id="maintenance-title">Depuración de datos de navegación</h2><p>Borra eventos crudos con más de ${Number(settings.raw_event_retention_days??90)} días y agregados con más de ${Number(settings.aggregate_retention_days??365)} días. Prográmala en el proyecto (docs/TECNICO_CRM.md) o ejecútala aquí.</p></div><button class="small-btn" data-purge type="button">${icon('history',{size:15})}<span>Depurar ahora</span></button></header>
+    <div class="cfg-card__body"><ul class="cfg-runs" data-runs><li><span class="spinner" aria-hidden="true"></span> Cargando…</li></ul><div class="cfg-plan" data-plan></div></div></section>`;
+  const runs=async()=>{try{const items=await getMaintenanceRuns();panel.querySelector('[data-runs]').innerHTML=items.length?items.map(item=>`<li>${icon('checkCircle',{size:15})}<span><strong>${escapeHtml(item.task)}</strong><small>${new Date(item.ran_at).toLocaleString('es-CO',{timeZone:'America/Bogota'})} · ${escapeHtml(JSON.stringify(item.result))}</small></span></li>`).join(''):`<li class="is-empty">${icon('info',{size:15})}<span>Sin ejecuciones registradas.</span></li>`;}catch{panel.querySelector('[data-runs]').innerHTML=`<li class="is-empty">${icon('info',{size:15})}<span>No disponible.</span></li>`;}};
   panel.querySelector('[data-purge]').addEventListener('click',async event=>{const button=event.currentTarget;setButtonLoading(button,true,'Depurando…');try{const result=await purgeBehaviorData();toast(`Depuración: ${result.eventos_borrados} evento(s) borrado(s)`);await runs();}catch(error){console.error(error);toast('No pudimos depurar.','error');}finally{setButtonLoading(button,false);}});
   await runs();
   const plan=await getPlanStatus();
-  panel.querySelector('[data-plan]').innerHTML=`<h3>Plan del servicio</h3><p class="form-help">${plan?(plan.status==='sin_plan'?escapeHtml(plan.message):`Plan ${escapeHtml(plan.plan||'')} · estado ${escapeHtml(plan.status)}${plan.period_end?` · vigente hasta ${escapeHtml(plan.period_end)}`:''}${plan.enforcement_enabled?'':' · sin bloqueo automático'}`):'No disponible.'} El cobro automático está desactivado: no hay proveedor de pagos configurado.</p>`;
+  panel.querySelector('[data-plan]').innerHTML=`${icon('card',{size:18})}<div><strong>Plan del servicio</strong><small>${plan?(plan.status==='sin_plan'?escapeHtml(plan.message):`Plan ${escapeHtml(plan.plan||'')} · estado ${escapeHtml(plan.status)}${plan.period_end?` · vigente hasta ${escapeHtml(plan.period_end)}`:''}${plan.enforcement_enabled?'':' · sin bloqueo automático'}`):'No disponible.'} El cobro automático está desactivado: no hay proveedor de pagos configurado.</small></div>`;
 }
 
 function paymentMethodThumb(item){return `<div class="data-row__thumb entity-thumb payment-method-thumb">${item.logo_url?`<img src="${escapeHtml(localAsset(item.logo_url))}" alt="" loading="lazy" width="52" height="52">`:`<span aria-hidden="true">${escapeHtml(paymentInitials(item.name))}</span>`}</div>`;}
-function paymentRows(items){return `<div class="data-list">${items.map(item=>`<article class="data-row payment-method-row" data-payment="${item.id}">${paymentMethodThumb(item)}<div class="data-row__main"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.instructions||'')}</small></div><span class="status-pill status-pill--${item.active?'active':'hidden'}">${item.active?'Activo':'Oculto'}</span><div class="data-row__actions"><button class="small-btn" data-edit type="button">Editar</button><button class="small-btn small-btn--danger" data-delete type="button">Eliminar</button></div></article>`).join('')}</div>`;}
+function paymentRows(items){return `<div class="cfg-rows">${items.length?items.map(item=>`<article class="cfg-row ${item.active?'':'is-off'}" data-payment="${item.id}">${paymentMethodThumb(item)}<div class="cfg-row__main"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.instructions||'Sin instrucciones para el cliente')}</small></div><span class="status-pill status-pill--${item.active?'active':'hidden'}">${item.active?'Activo':'Oculto'}</span><div class="cfg-row__actions"><button class="small-btn" data-edit type="button">${icon('pencil',{size:15})}<span>Editar</span></button><button class="icon-btn icon-btn--danger" data-delete type="button" aria-label="Eliminar ${escapeHtml(item.name)}" title="Eliminar">${icon('trash',{size:16})}</button></div></article>`).join(''):`<div class="cfg-empty">${icon('wallet',{size:22})}<strong>Sin métodos de pago</strong><small>Agrega transferencias, efectivo o pagos con tarjeta.</small></div>`}</div>`;}
 function bindPayments(items){$$('[data-payment]').forEach(row=>{const item=items.find(x=>x.id===row.dataset.payment);const editButton=row.querySelector('[data-edit]');const deleteButton=row.querySelector('[data-delete]');editButton.addEventListener('click',()=>openPaymentForm(item,items));deleteButton.addEventListener('click',async()=>{const confirmed=await confirmAction(`¿Eliminar ${item.name}? Esta acción no se puede deshacer.`,'Eliminar método de pago',{confirmLabel:'Eliminar método',trigger:deleteButton});if(!confirmed)return;setButtonLoading(deleteButton,true,'Eliminando…');try{await deleteRow('payment_methods',item.id);await renderSettings();toast('Método eliminado');if(item.logo_url)removePaymentMethodAsset(item.logo_url).catch(error=>console.warn('No se pudo limpiar el logo del método:',error));}catch(error){console.error(error);setButtonLoading(deleteButton,false);toast('No pudimos eliminar el método. Intenta nuevamente.','error');}});});}
 function openPaymentForm(item,items){
   const form=document.createElement('form');let previewUrl='';
@@ -731,6 +1064,6 @@ function openPaymentForm(item,items){
   form.addEventListener('submit',async event=>{event.preventDefault();const button=event.submitter;const data=new FormData(form);const file=form.elements.logo.files[0];let uploadedUrl='';if(file&&file.size>5242880){toast('El logo debe pesar máximo 5 MB.','error');return;}setButtonLoading(button,true,'Guardando…');try{const values={name:data.get('name').trim(),instructions:data.get('instructions').trim()||null,sort_order:Number(data.get('sort_order')||0),active:data.has('active')};if(file){uploadedUrl=await uploadImage('site-assets',file,'payment-methods');values.logo_url=uploadedUrl;}else if(data.has('remove_logo'))values.logo_url=null;await saveRow('payment_methods',values,item?.id);modal.close();await renderSettings();toast('Método guardado');if(item?.logo_url&&(uploadedUrl||data.has('remove_logo')))removePaymentMethodAsset(item.logo_url).catch(error=>console.warn('No se pudo limpiar el logo anterior:',error));}catch(error){console.error(error);if(uploadedUrl)removePaymentMethodAsset(uploadedUrl).catch(()=>{});toast('No pudimos guardar el método.','error');setButtonLoading(button,false);}});
 }
 
-function deliveryRows(items){return `<div class="data-list">${items.length?items.map(item=>`<article class="data-row" data-delivery="${item.id}"><div class="data-row__main"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.instructions||'')}${item.requires_address?' · Requiere dirección':item.requires_city?' · Requiere ciudad':''}${Number(item.base_cost)?` · ${formatMoney(item.base_cost)}`:''}</small></div><span class="status-pill">${item.active?'Activo':'Oculto'}</span><div class="data-row__actions"><button class="small-btn" data-edit-delivery type="button">Editar</button><button class="small-btn small-btn--danger" data-delete-delivery type="button">Eliminar</button></div></article>`).join(''):'<div class="empty-state"><h3>Sin métodos de entrega</h3><p>El checkout permanecerá bloqueado hasta crear uno.</p></div>'}</div>`;}
-function bindDeliveries(items){$$('[data-delivery]').forEach(row=>{const item=items.find(value=>value.id===row.dataset.delivery);row.querySelector('[data-edit-delivery]').addEventListener('click',()=>openDeliveryForm(item,items));row.querySelector('[data-delete-delivery]').addEventListener('click',async()=>{if(!confirm(`¿Eliminar ${item.name}?`))return;try{await deleteRow('delivery_methods',item.id);toast('Método eliminado');renderSettings();}catch(error){toast('No se puede eliminar si ya está usado en un pedido.','error');}});});}
+function deliveryRows(items){return `<div class="cfg-rows">${items.length?items.map(item=>`<article class="cfg-row ${item.active?'':'is-off'}" data-delivery="${item.id}"><span class="cfg-row__icon" aria-hidden="true">${icon(item.requires_address?'truck':item.requires_city?'navigation':'store',{size:20})}</span><div class="cfg-row__main"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.instructions||'Sin instrucciones para el cliente')}</small><span class="cfg-row__tags"><em>${Number(item.base_cost)?formatMoney(item.base_cost):'Sin costo'}</em>${item.requires_address?'<em>Pide dirección</em>':item.requires_city?'<em>Pide ciudad</em>':''}</span></div><span class="status-pill status-pill--${item.active?'active':'hidden'}">${item.active?'Activo':'Oculto'}</span><div class="cfg-row__actions"><button class="small-btn" data-edit-delivery type="button">${icon('pencil',{size:15})}<span>Editar</span></button><button class="icon-btn icon-btn--danger" data-delete-delivery type="button" aria-label="Eliminar ${escapeHtml(item.name)}" title="Eliminar">${icon('trash',{size:16})}</button></div></article>`).join(''):`<div class="cfg-empty">${icon('truck',{size:22})}<strong>Sin métodos de entrega</strong><small>El checkout permanecerá bloqueado hasta crear uno.</small></div>`}</div>`;}
+function bindDeliveries(items){$$('[data-delivery]').forEach(row=>{const item=items.find(value=>value.id===row.dataset.delivery);row.querySelector('[data-edit-delivery]').addEventListener('click',()=>openDeliveryForm(item,items));const deleteButton=row.querySelector('[data-delete-delivery]');deleteButton.addEventListener('click',async()=>{if(!await confirmAction(`¿Eliminar ${item.name}? Si ya se usó en un pedido no se puede eliminar; en ese caso ocúltalo.`,'Eliminar método de entrega',{confirmLabel:'Eliminar método',trigger:deleteButton}))return;try{await deleteRow('delivery_methods',item.id);toast('Método eliminado');renderSettings();}catch(error){toast('No se puede eliminar si ya está usado en un pedido.','error');}});});}
 function openDeliveryForm(item,items){const form=document.createElement('form');form.className='admin-form';form.innerHTML=`<div class="form-grid"><label>Nombre<input name="name" required value="${escapeHtml(item?.name||'')}"></label><label>Orden<input name="sort_order" type="number" min="0" value="${item?.sort_order??items.length+1}"></label><label>Costo base<input name="base_cost" type="number" min="0" step="100" value="${item?.base_cost??0}"></label><label class="form-grid__full">Instrucciones<textarea name="instructions">${escapeHtml(item?.instructions||'')}</textarea></label><label class="check-field"><input name="requires_city" type="checkbox" ${item?.requires_city?'checked':''}> Requiere ciudad</label><label class="check-field"><input name="requires_address" type="checkbox" ${item?.requires_address?'checked':''}> Requiere dirección</label><label class="check-field"><input name="active" type="checkbox" ${item?.active!==false?'checked':''}> Activo</label></div><div class="form-actions"><button class="btn btn--primary" type="submit">Guardar</button></div>`;const modal=openModal({title:item?'Editar entrega':'Nuevo método de entrega',content:form});form.addEventListener('submit',async event=>{event.preventDefault();const data=new FormData(form),button=event.submitter;setButtonLoading(button,true,'Guardando…');try{await saveRow('delivery_methods',{name:data.get('name').trim(),instructions:data.get('instructions').trim()||null,sort_order:Number(data.get('sort_order')||0),base_cost:Number(data.get('base_cost')||0),requires_city:data.has('requires_city')||data.has('requires_address'),requires_address:data.has('requires_address'),active:data.has('active')},item?.id);modal.close();toast('Método de entrega guardado');renderSettings();}catch(error){toast('No pudimos guardar el método.','error');setButtonLoading(button,false);}});}

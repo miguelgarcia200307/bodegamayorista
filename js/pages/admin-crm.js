@@ -7,6 +7,7 @@ import {
   recordConsent, registerSaleReturn, saveAdminQuote, saveBirthdayContact, saveCustomer, setQuoteStatus, setSaleStatus, updateOrder, updateSaleNotes
 } from '../lib/api.js';
 import { confirmAction, openModal } from '../components/modal.js';
+import { withLoading } from '../components/loading-dialog.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
 import { barList, bindChartTooltips, columnChart, rangeMeter } from '../components/mini-charts.js';
@@ -16,7 +17,7 @@ import { tierFor } from '../lib/pricing.js';
 import { downloadCommercialDocument, printCommercialDocument } from '../lib/documents.js';
 import { birthdayInfo, bogotaTodayIso, isValidBirthDate } from '../lib/crm-dates.js';
 import { DOC_ITEMS, DOC_NUMBER, analyzeCustomer, catalogIndex, daysBetween, describeLine, groupByProduct, returnedBySaleItem, saleDate } from '../lib/customer-insights.js';
-import { isPurchase, purchaseDate, saleEconomics } from '../lib/metrics.js';
+import { bogotaDate, isPurchase, purchaseDate, saleEconomics } from '../lib/metrics.js';
 
 const PAGE_SIZE = 20;
 const CONFIRMED_SALE = ['confirmada', 'pagada', 'entregada'];
@@ -445,6 +446,20 @@ function guardUnsaved(getSignature) {
 }
 
 // --- Resumen ----------------------------------------------------------------------
+// Barras por día del mes en curso (ventas netas confirmadas). Días futuros quedan como guía.
+function dashMonthChart(daily, today) {
+  const [year, month, day] = today.split('-').map(Number);
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const max = Math.max(1, ...daily.values());
+  const monthName = new Date(Date.UTC(year, month - 1, 15)).toLocaleDateString('es-CO', { month: 'short', timeZone: 'UTC' }).replace('.', '');
+  const bars = Array.from({ length: days }, (_, index) => {
+    const dayNumber = index + 1; const cents = daily.get(dayNumber) || 0; const future = dayNumber > day;
+    const height = cents ? Math.max(6, Math.round((cents / max) * 100)) : 0;
+    return `<span class="dash-bars__day${future ? ' is-future' : ''}${dayNumber === day ? ' is-today' : ''}${cents ? ' has-sales' : ''}" style="--h:${height}%" title="${dayNumber} ${monthName}: ${cents ? formatMoney(fromCents(cents)) : future ? 'aún no llega' : 'sin ventas'}"><i></i></span>`;
+  }).join('');
+  return `<div class="dash-bars" role="img" aria-label="Ventas por día de ${monthName}: ${[...daily.values()].filter(Boolean).length} días con ventas">${bars}</div><div class="dash-bars__axis" aria-hidden="true"><span>1 ${monthName}</span><span>${days} ${monthName}</span></div>`;
+}
+
 export async function renderDashboard() {
   // Cada fuente puede fallar por separado: un error se muestra como "no disponible",
   // nunca como cero.
@@ -456,35 +471,121 @@ export async function renderDashboard() {
   const [orders, customers, quotes, sales, config, payments, deliveries, tasks] = labels.map((_, index) => value(index));
   const today = bogotaTodayIso();
   const monthPrefix = today.slice(0, 7);
-  const pending = orders ? orders.filter(item => item.status === 'pendiente').length : null;
-  const openQuotes = quotes ? quotes.filter(item => OPEN_QUOTE.includes(item.status) && !isQuoteExpired(item)).length : null;
+  const dayOfMonth = Number(today.slice(8, 10));
+  const prevPrefix = (() => { const [y, m] = monthPrefix.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; })();
+  const monthLabel = iso => new Date(`${iso}-15T12:00:00Z`).toLocaleDateString('es-CO', { month: 'long', timeZone: 'UTC' });
+  const pending = orders ? orders.filter(item => item.status === 'pendiente') : null;
+  const openQuotes = quotes ? quotes.filter(item => OPEN_QUOTE.includes(item.status) && !isQuoteExpired(item)) : null;
+  const expiringQuotes = openQuotes ? openQuotes.filter(item => item.valid_until && item.valid_until <= addIsoDays(today, 3)) : null;
   // Ventas del mes = compras confirmadas en el mes (cohorte), netas de devoluciones.
-  const monthSales = sales ? sales.filter(sale => isPurchase(sale) && purchaseDate(sale).startsWith(monthPrefix)) : null;
-  const monthCents = monthSales ? monthSales.reduce((sum, sale) => sum + saleEconomics(sale).productsKeptCents, 0) : null;
+  const purchases = sales ? sales.filter(isPurchase) : null;
+  const monthSales = purchases ? purchases.filter(sale => purchaseDate(sale).startsWith(monthPrefix)) : null;
+  const keptCents = sale => saleEconomics(sale).productsKeptCents;
+  const monthCents = monthSales ? monthSales.reduce((sum, sale) => sum + keptCents(sale), 0) : null;
+  // Comparación justa: el mes anterior hasta el mismo día.
+  const prevCents = purchases ? purchases.filter(sale => { const date = purchaseDate(sale); return date.startsWith(prevPrefix) && Number(date.slice(8, 10)) <= dayOfMonth; }).reduce((sum, sale) => sum + keptCents(sale), 0) : null;
+  const delta = monthCents != null && prevCents > 0 ? Math.round(((monthCents - prevCents) / prevCents) * 100) : null;
+  const todayCents = monthSales ? monthSales.filter(sale => purchaseDate(sale) === today).reduce((sum, sale) => sum + keptCents(sale), 0) : null;
+  const daily = new Map(); (monthSales || []).forEach(sale => { const dayNumber = Number(purchaseDate(sale).slice(8, 10)); daily.set(dayNumber, (daily.get(dayNumber) || 0) + keptCents(sale)); });
+  const pick = view => sales ? sales.filter(SALE_VIEWS[view].match) : null;
+  const toConfirm = pick('to_confirm'); const toCollect = pick('to_collect'); const toDeliver = pick('to_deliver');
   const birthdays = customers ? customers.map(customer => ({ customer, info: birthdayInfo(customer.birth_date) })).filter(item => item.info && item.info.days <= 7).sort((a, b) => a.info.days - b.info.days) : [];
   const birthdaysToday = birthdays.filter(item => item.info.days === 0).length;
+  const newCustomers = customers ? customers.filter(item => item.created_at && bogotaDate(item.created_at).startsWith(monthPrefix)).length : null;
+  const monthOrders = orders ? orders.filter(item => item.created_at && bogotaDate(item.created_at).startsWith(monthPrefix)).length : null;
   const due = tasks ? tasks.filter(task => task.status === 'pendiente' || (task.next_review_at && task.next_review_at <= today)) : null;
   const overdue = due ? due.filter(task => task.due_at && task.due_at < today).length : 0;
-  const low = ctx.getProducts().filter(ctx.isProductLow).length;
-  const missing = config ? [
-    !config.whatsapp && 'WhatsApp del negocio (el checkout está bloqueado)',
-    deliveries && !deliveries.some(item => item.active) && 'Al menos un método de entrega activo',
-    payments && !payments.some(item => item.active) && 'Al menos un método de pago activo',
-    !config.logo_url && 'Logo oficial para documentos',
-    !(config.address && config.city) && 'Dirección y ciudad del negocio',
-    !(config.data_policy_text && config.data_policy_version) && 'Texto y versión de tratamiento de datos',
-    !config.privacy_controller_name && 'Responsable del tratamiento de datos (página de privacidad)',
-    !config.sale_terms && 'Condiciones del comprobante', !config.warranty_text && 'Política de garantía', !config.quote_terms && 'Condiciones de cotización'
-  ].filter(Boolean) : [];
-  const show = (number, text = number) => number == null ? '—<small class="stat-card__sub">No disponible</small>' : text;
-  const card = (label, valueText, section, params, tone, action) => `<button class="stat-card ${tone ? `stat-card--${tone}` : ''}" data-go="${section}" data-params='${escapeHtml(JSON.stringify(params))}' type="button"><span>${label}</span><strong>${valueText}</strong><small>${action} →</small></button>`;
-  $('#admin-content').innerHTML = ctx.heading('Panel administrador', 'Resumen', 'Datos reales de la tienda. Cero significa que aún no hay registros; "No disponible" significa que la consulta falló.')
+  const products = ctx.getProducts();
+  const low = products.filter(ctx.isProductLow).length;
+  const published = products.filter(product => product.status !== 'hidden').length;
+  const setupChecks = config ? [
+    [Boolean(config.whatsapp), 'WhatsApp del negocio', 'Sin él, el checkout de la tienda está bloqueado.', true],
+    [!deliveries || deliveries.some(item => item.active), 'Al menos un método de entrega activo', '', true],
+    [!payments || payments.some(item => item.active), 'Al menos un método de pago activo', '', true],
+    [Boolean(config.logo_url), 'Logo oficial para documentos', ''],
+    [Boolean(config.address && config.city), 'Dirección y ciudad del negocio', ''],
+    [Boolean(config.data_policy_text && config.data_policy_version), 'Texto y versión de tratamiento de datos', ''],
+    [Boolean(config.privacy_controller_name), 'Responsable del tratamiento de datos', 'Aparece en la página de privacidad.'],
+    [Boolean(config.sale_terms), 'Condiciones del comprobante', ''], [Boolean(config.warranty_text), 'Política de garantía', ''], [Boolean(config.quote_terms), 'Condiciones de cotización', '']
+  ] : [];
+  const missing = setupChecks.filter(([done]) => !done);
+  const critical = missing.filter(item => item[3]);
+
+  const go = (section, params = {}) => `data-go="${section}" data-params='${escapeHtml(JSON.stringify(params))}'`;
+  const money = cents => cents == null ? '—' : formatMoney(fromCents(cents));
+  const dateLong = new Date(`${today}T12:00:00Z`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const updated = new Date().toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' });
+
+  // Agenda: solo lo que pide una acción hoy, de lo más urgente a lo menos.
+  const agenda = [
+    critical.length && { tone: 'danger', icon: 'alert', count: critical.length, title: critical.length === 1 ? 'Ajuste crítico pendiente' : 'Ajustes críticos pendientes', hint: critical.map(item => item[1]).join(' · '), target: go('settings') },
+    due?.length && { tone: overdue ? 'danger' : 'warning', icon: 'check', count: due.length, title: due.length === 1 ? 'Cliente por atender' : 'Clientes por atender', hint: overdue ? `${plural(overdue, 'tarea vencida', 'tareas vencidas')} · seguimientos y postventa` : 'Seguimientos, postventa y recordatorios', target: go('today') },
+    pending?.length && { tone: 'warning', icon: 'bag', count: pending.length, title: pending.length === 1 ? 'Solicitud sin atender' : 'Solicitudes sin atender', hint: `Pedidos nuevos por ${formatMoney(pending.reduce((sum, item) => sum + Number(item.total || 0), 0))}`, target: go('orders', { status: 'pendiente' }) },
+    toConfirm?.length && { tone: 'warning', icon: 'package', count: toConfirm.length, title: toConfirm.length === 1 ? 'Venta por confirmar' : 'Ventas por confirmar', hint: 'Aún no descuentan inventario', target: go('sales', { status: 'to_confirm' }) },
+    toCollect?.length && { tone: 'info', icon: 'wallet', count: toCollect.length, title: toCollect.length === 1 ? 'Venta por cobrar' : 'Ventas por cobrar', hint: `${formatMoney(toCollect.reduce((sum, item) => sum + Number(item.total || 0), 0))} pendientes de pago`, target: go('sales', { status: 'to_collect' }) },
+    toDeliver?.length && { tone: 'info', icon: 'truck', count: toDeliver.length, title: toDeliver.length === 1 ? 'Venta por entregar' : 'Ventas por entregar', hint: 'Confirmadas o pagadas sin entrega registrada', target: go('sales', { status: 'to_deliver' }) },
+    expiringQuotes?.length && { tone: 'info', icon: 'clock', count: expiringQuotes.length, title: expiringQuotes.length === 1 ? 'Cotización vence pronto' : 'Cotizaciones vencen pronto', hint: 'En los próximos 3 días: buen momento para insistir', target: go('quotes', { status: 'open' }) },
+    low && { tone: 'danger', icon: 'layers', count: low, title: low === 1 ? 'Producto con stock bajo' : 'Productos con stock bajo', hint: 'Agotados o en últimas unidades', target: go('stock', { status: 'low' }) },
+    birthdaysToday && { tone: 'gold', icon: 'star', count: birthdaysToday, title: birthdaysToday === 1 ? 'Cumpleaños hoy' : 'Cumpleaños hoy', hint: 'Un saludo a tiempo fideliza', target: go('customers', { view: 'today' }) }
+  ].filter(Boolean);
+  const agendaTotal = agenda.reduce((sum, item) => sum + item.count, 0);
+  const AGENDA_VISIBLE = 5;
+
+  const stat = (label, valueText, detail, target) => `<button class="dash-stat" ${target} type="button"><span class="dash-stat__label">${label}</span><strong class="dash-stat__value">${valueText}</strong><span class="dash-stat__detail">${detail}</span></button>`;
+  const quick = [['orders', 'bag', 'Registrar pedido', 'WhatsApp o en persona'], ['sales', 'wallet', 'Venta manual', 'Compra ya cerrada'], ['quotes', 'layers', 'Nueva cotización', 'Con PDF para enviar'], ['customers', 'user', 'Nuevo cliente', 'Ficha en segundos']];
+
+  $('#admin-content').innerHTML = `<div class="dash">`
+    + `<header class="admin-heading dash-head"><div><span class="eyebrow">Panel administrador</span><h1>Resumen</h1><p><span class="dash-head__date">${escapeHtml(dateLong)}</span> · ${agendaTotal ? `tienes <b>${plural(agenda.length, 'asunto', 'asuntos')}</b> por atender` : 'todo al día por ahora'}</p></div><button class="dash-refresh" data-refresh type="button">${icon('history', { size: 16 })}<span>Actualizado ${escapeHtml(updated)}</span></button></header>`
     + (failed.length || truncated.length ? `<p class="doc-alert doc-alert--warning" role="status">${failed.length ? `No se pudieron cargar: ${escapeHtml(failed.join(', '))}. ` : ''}${truncated.length ? `Se alcanzó el tope de lectura en: ${escapeHtml(truncated.join(', '))}; los totales pueden estar incompletos.` : ''}</p>` : '')
-    + (missing.length ? `<section class="admin-panel setup-panel" role="status"><div class="admin-panel__head"><h2>Configuración pendiente</h2><button class="small-btn small-btn--primary" data-go="settings" data-params="{}" type="button">Completar</button></div><ul>${missing.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : '')
-    + `<section class="stat-grid">${card('A quién atender hoy', show(due?.length, `${due?.length}${overdue ? `<small class="stat-card__sub">${overdue} vencida${overdue === 1 ? '' : 's'}</small>` : ''}`), 'today', {}, due?.length ? 'warning' : '', 'Abrir tareas')}${card('Solicitudes pendientes', show(pending), 'orders', { status: 'pendiente' }, pending ? 'warning' : '', 'Abrir pedidos')}${card('Cotizaciones abiertas', show(openQuotes), 'quotes', { status: 'open' }, '', 'Abrir cotizaciones')}${card(`Ventas del mes · ${new Date(`${today}T12:00:00Z`).toLocaleDateString('es-CO', { month: 'long', timeZone: 'UTC' })}`, show(monthSales?.length, `${monthSales?.length}<small class="stat-card__sub">${formatMoney(fromCents(monthCents || 0))} netos de devoluciones</small>`), 'sales', { status: 'confirmed' }, monthSales?.length ? 'success' : '', 'Abrir ventas')}${card('Clientes registrados', show(customers?.length), 'customers', {}, '', 'Abrir clientes')}${card('Cumpleaños hoy / 7 días', customers ? `${birthdaysToday} / ${birthdays.length}` : show(null), 'customers', { view: 'week' }, birthdays.length ? 'warning' : '', 'Revisar cumpleaños')}${card('Stock bajo o agotado', low, 'stock', { status: 'low' }, low ? 'danger' : '', 'Revisar stock')}</section>`
-    + `<section class="admin-panel"><div class="admin-panel__head"><h2>Cumpleaños próximos</h2></div>${birthdays.length ? `<div class="crm-list">${birthdays.slice(0, 6).map(({ customer, info }) => birthdayCard(customer, info)).join('')}</div>` : emptyMarkup(customers ? 'Sin datos todavía' : 'No disponible', customers ? 'Aquí aparecerán los clientes que cumplen años hoy o en los próximos 7 días.' : 'No se pudo cargar la lista de clientes.')}</section>`
-    + `<section class="admin-panel"><div class="admin-panel__head"><h2>Acciones rápidas</h2></div><div class="quick-actions"><button class="quick-action" data-go="orders" data-params='{"new":"1"}' type="button"><span class="quick-action__icon">#</span><span>Registrar pedido</span></button><button class="quick-action" data-go="customers" data-params='{"new":"1"}' type="button"><span class="quick-action__icon">◎</span><span>Nuevo cliente</span></button><button class="quick-action" data-go="quotes" data-params='{"new":"1"}' type="button"><span class="quick-action__icon">≡</span><span>Nueva cotización</span></button><button class="quick-action" data-go="sales" data-params='{"new":"1"}' type="button"><span class="quick-action__icon">$</span><span>Venta manual</span></button></div></section>`;
+    + `<div class="dash-top">
+      <section class="dash-month" aria-labelledby="dash-month-title">
+        <header class="dash-month__head"><div><h2 id="dash-month-title">Ventas de ${escapeHtml(monthLabel(monthPrefix))}</h2><small>Confirmadas, netas de devoluciones</small></div>${delta == null ? '' : `<span class="dash-delta ${delta >= 0 ? 'is-up' : 'is-down'}" title="Comparado con ${escapeHtml(monthLabel(prevPrefix))} hasta el día ${dayOfMonth}">${icon('arrowRight', { size: 14 })}${delta >= 0 ? '+' : '−'}${Math.abs(delta)} % vs. ${escapeHtml(monthLabel(prevPrefix).slice(0, 3))}.</span>`}</header>
+        <strong class="dash-month__figure">${money(monthCents)}</strong>
+        <dl class="dash-month__facts">
+          <div><dt>Ventas</dt><dd>${monthSales ? monthSales.length : '—'}</dd></div>
+          <div><dt>Ticket promedio</dt><dd>${monthSales?.length ? money(Math.round(monthCents / monthSales.length)) : '—'}</dd></div>
+          <div><dt>Hoy</dt><dd>${money(todayCents)}</dd></div>
+        </dl>
+        ${sales ? dashMonthChart(daily, today) : '<p class="dash-muted">No se pudieron cargar las ventas.</p>'}
+        <button class="dash-link" ${go('sales', { status: 'confirmed' })} type="button">Ver ventas del mes${icon('arrowRight', { size: 15 })}</button>
+      </section>
+      <section class="dash-agenda" aria-labelledby="dash-agenda-title">
+        <header><h2 id="dash-agenda-title">Para atender</h2><span>${agendaTotal ? plural(agendaTotal, 'pendiente', 'pendientes') : 'Al día'}</span></header>
+        ${agenda.length ? `<ol class="dash-agenda__list">${agenda.map((item, index) => `<li ${index >= AGENDA_VISIBLE ? 'class="is-extra" hidden' : ''}><button class="dash-task dash-task--${item.tone}" ${item.target} type="button"><span class="dash-task__count">${item.count}</span><span class="dash-task__text"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.hint)}</small></span>${icon('chevronRight', { size: 16 })}</button></li>`).join('')}</ol>${agenda.length > AGENDA_VISIBLE ? `<button class="dash-agenda__more" data-agenda-more type="button" aria-expanded="false">Ver ${agenda.length - AGENDA_VISIBLE} más${icon('chevronDown', { size: 15 })}</button>` : ''}` : `<div class="dash-agenda__clear">${icon('checkCircle', { size: 28 })}<strong>Nada urgente por ahora</strong><p>No hay solicitudes, ventas ni tareas esperando. Buen momento para revisar el catálogo o crear una cotización.</p></div>`}
+      </section>
+    </div>`
+    + `<section class="dash-strip" aria-label="Indicadores generales">
+      ${stat('Clientes', customers ? customers.length : '—', newCustomers ? `+${newCustomers} este mes` : 'Sin altas este mes', go('customers'))}
+      ${stat('Cotizaciones abiertas', openQuotes ? openQuotes.length : '—', openQuotes?.length ? `${formatMoney(openQuotes.reduce((sum, item) => sum + Number(item.total || 0), 0))} en juego` : 'Ninguna en curso', go('quotes', { status: 'open' }))}
+      ${stat('Pedidos del mes', monthOrders ?? '—', pending?.length ? `${pending.length} sin atender` : 'Todos atendidos', go('orders'))}
+      ${stat('Catálogo publicado', published, low ? `${low} con stock bajo` : 'Stock en orden', go('products'))}
+    </section>`
+    + `<div class="dash-bottom">
+      <section class="dash-panel dash-birthdays" aria-labelledby="dash-bd-title">
+        <header><h2 id="dash-bd-title">Cumpleaños de la semana</h2>${birthdays.length ? `<button class="dash-link" ${go('customers', { view: 'week' })} type="button">Ver todos${icon('arrowRight', { size: 15 })}</button>` : ''}</header>
+        ${birthdays.length ? `<div class="dash-birthdays__list">${birthdays.slice(0, 4).map(({ customer, info }) => `<div class="dash-bd"><span class="dash-bd__date${info.days === 0 ? ' is-today' : ''}"><b>${Number(info.next.slice(8, 10))}</b><small>${escapeHtml(new Date(`${info.next}T12:00:00Z`).toLocaleDateString('es-CO', { month: 'short', timeZone: 'UTC' }).replace('.', ''))}</small></span>${birthdayCard(customer, info)}</div>`).join('')}</div>` : `<p class="dash-muted">${customers ? 'Nadie cumple años en los próximos 7 días. Registra la fecha de nacimiento en la ficha para no perderte ninguno.' : 'No se pudo cargar la lista de clientes.'}</p>`}
+      </section>
+      <div class="dash-side">
+        <section class="dash-panel" aria-labelledby="dash-quick-title">
+          <header><h2 id="dash-quick-title">Atajos</h2></header>
+          <div class="dash-quick">${quick.map(([section, iconName, label, hint]) => `<button class="dash-quick__btn" ${go(section, { new: '1' })} type="button"><span class="dash-quick__icon">${icon(iconName, { size: 18 })}</span><span><strong>${label}</strong><small>${hint}</small></span></button>`).join('')}</div>
+        </section>
+        ${missing.length ? `<section class="dash-panel dash-setup" role="status" aria-labelledby="dash-setup-title">
+          <header><h2 id="dash-setup-title">Configuración pendiente</h2><span>${setupChecks.length - missing.length} de ${setupChecks.length}</span></header>
+          <span class="dash-setup__bar" aria-hidden="true"><i style="width:${Math.round(((setupChecks.length - missing.length) / setupChecks.length) * 100)}%"></i></span>
+          <ul>${missing.slice(0, 4).map(([, label, hint, isCritical]) => `<li class="${isCritical ? 'is-critical' : ''}"><span>${escapeHtml(label)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</li>`).join('')}${missing.length > 4 ? `<li class="is-more">y ${missing.length - 4} más</li>` : ''}</ul>
+          <button class="small-btn small-btn--primary" ${go('settings')} type="button">Completar configuración</button>
+        </section>` : ''}
+      </div>
+    </div>`
+    + `</div>`;
   $$('#admin-content [data-go]').forEach(button => button.addEventListener('click', () => ctx.navigateTo(button.dataset.go, JSON.parse(button.dataset.params || '{}'))));
+  $('#admin-content [data-agenda-more]')?.addEventListener('click', event => {
+    const button = event.currentTarget; const open = button.getAttribute('aria-expanded') !== 'true';
+    $$('#admin-content .dash-agenda__list .is-extra').forEach(item => { item.hidden = !open; });
+    button.setAttribute('aria-expanded', String(open)); button.firstChild.textContent = open ? 'Ver menos' : `Ver ${agenda.length - AGENDA_VISIBLE} más`;
+  });
+  $('#admin-content [data-refresh]').addEventListener('click', async event => { setButtonLoading(event.currentTarget, true, 'Actualizando…'); await ctx.refreshProducts(); await renderDashboard(); });
   bindBirthdayCards($('#admin-content'), customers || [], renderDashboard);
 }
 
@@ -512,7 +613,8 @@ function bindBirthdayCards(root, customers, refresh) {
 }
 
 async function openBirthdayGreeting(customer, refresh, trigger) {
-  const config = await settings();
+  const config = await withLoading(settings, { title: 'Preparando el saludo', steps: ['Cargando la configuración del negocio…'], trigger });
+  if (!config) return;
   const contact = contactThisYear(customer);
   if (contact && ['contactado', 'obsequio_ofrecido', 'completado'].includes(contact.status)) {
     const again = await confirmAction(`Este año ya registraste “${CONTACT_STATUS[contact.status]}” para ${customer.full_name}. ¿Quieres abrir WhatsApp de nuevo?`, 'Felicitación ya registrada', { confirmLabel: 'Abrir de nuevo', tone: 'primary', trigger });
@@ -703,31 +805,149 @@ export async function renderCustomers() {
   if (params.get('new')) { history.replaceState({}, '', `${location.pathname}?section=customers`); openCustomerForm(null, refresh); }
 }
 
+const CUSTOMER_SOURCE_OPTIONS = [['manual', 'Registro directo', 'pencil'], ['WhatsApp', 'Escribió por chat', 'whatsapp'], ['presencial', 'Vino al local', 'store'], ['tienda', 'Compró en línea', 'bag']];
+const phoneDigits = value => String(value || '').replace(/\D/g, '');
+// Últimos 10 dígitos: compara 300 123 4567 con +57 300 123 4567 sin depender del formato.
+const phoneKey = value => phoneDigits(value).slice(-10);
+const phonePreview = value => {
+  const digits = phoneDigits(value);
+  const local = digits.length === 12 && digits.startsWith('57') ? digits.slice(2) : digits;
+  return local.length === 10 && local.startsWith('3') ? `+57 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}` : `+${digits}`;
+};
+
 export async function openCustomerForm(customer, onSaved, trigger = null) {
-  const config = await settings();
+  const config = await withLoading(settings, { title: customer ? 'Abriendo los datos del cliente' : 'Preparando nuevo cliente', steps: ['Cargando la configuración de privacidad…'], trigger });
+  if (!config) return;
   const today = bogotaTodayIso();
+  const value = key => escapeHtml(customer?.[key] || '');
+  const currentSource = customer?.source || 'manual';
+  const sources = CUSTOMER_SOURCE_OPTIONS.some(([key]) => key === currentSource) ? CUSTOMER_SOURCE_OPTIONS : [...CUSTOMER_SOURCE_OPTIONS, [currentSource, 'Origen actual', 'info']];
+  const consentVersion = config.marketing_consent_version;
   const form = document.createElement('form');
-  form.className = 'admin-form';
+  form.className = 'admin-form flow-form customer-form';
   form.noValidate = true;
-  form.innerHTML = `<div class="form-grid"><label>Nombre completo<input name="full_name" required maxlength="120" value="${escapeHtml(customer?.full_name || '')}"></label><label>Teléfono<input name="phone_original" required inputmode="tel" maxlength="30" placeholder="300 123 4567 o +57 300 123 4567" value="${escapeHtml(customer?.phone_original || '')}"></label><label>Ciudad <small>Opcional</small><input name="city" maxlength="80" value="${escapeHtml(customer?.city || '')}"></label><label>Fecha de nacimiento <small>Opcional</small><input name="birth_date" type="date" min="1900-01-01" max="${today}" value="${escapeHtml(customer?.birth_date || '')}"></label><label class="form-grid__full">Dirección habitual <small>Opcional</small><input name="address" maxlength="250" value="${escapeHtml(customer?.address || '')}"></label><label>Documento de identificación <small>Opcional y privado</small><input name="identification" maxlength="40" value="${escapeHtml(customer?.identification || '')}"></label><label>Origen<select name="source">${['manual', 'WhatsApp', 'presencial', 'tienda'].map(value => `<option value="${value}" ${(customer?.source || 'manual') === value ? 'selected' : ''}>${SOURCES[value]}</option>`).join('')}</select></label><label class="check-field form-grid__full"><input name="marketing_consent" type="checkbox" ${customer && marketingAllowed(customer) ? 'checked' : ''}> El cliente autorizó felicitaciones, ofertas y contacto promocional${config.marketing_consent_version ? ` (versión ${escapeHtml(config.marketing_consent_version)})` : ' <small>(texto pendiente de configuración)</small>'}</label><label class="form-grid__full">Notas internas <small>Opcional</small><textarea name="notes" rows="3">${escapeHtml(customer?.notes || '')}</textarea></label></div><p class="product-form-error" data-error role="alert" hidden></p><div class="form-actions"><button class="btn btn--primary" type="submit">Guardar cliente</button></div>`;
+  const field = (name, label, input, { hint = '', optional = false, full = false, iconName = '' } = {}) => `<div class="cf-field${full ? ' cf-field--full' : ''}" data-field="${name}"><label for="cf-${name}">${label}${optional ? ' <small>Opcional</small>' : ' <b class="cf-req" aria-hidden="true">*</b>'}</label><span class="cf-control${iconName ? ' cf-control--icon' : ''}">${iconName ? icon(iconName, { size: 18 }) : ''}${input}</span><small class="cf-hint" data-hint="${name}">${hint}</small><small class="cf-error" data-field-error="${name}" hidden></small></div>`;
+  const step = (number, key, title, hint, body, badge) => `<section class="flow-step" data-step="${key}"><header class="flow-step__head"><span class="flow-step__num" aria-hidden="true"><b>${number}</b>${icon('check', { size: 15 })}</span><div><h3>${title}</h3><p>${hint}</p></div>${badge}</header>${body}</section>`;
+  form.innerHTML = `<div class="flow-form__body form-grid">
+    <div class="flow-form__main">
+      ${step(1, 'contact', 'Datos de contacto', 'Con el nombre y el teléfono ya puedes registrar ventas, pedidos y cotizaciones.', `<div class="cf-grid">
+        ${field('full_name', 'Nombre completo', `<input id="cf-full_name" name="full_name" required maxlength="120" autocomplete="off" placeholder="Ej. María Fernanda Gómez" value="${value('full_name')}">`, { iconName: 'user' })}
+        ${field('phone_original', 'Teléfono / WhatsApp', `<input id="cf-phone_original" name="phone_original" required inputmode="tel" maxlength="30" autocomplete="off" placeholder="300 123 4567 o +57 300 123 4567" value="${value('phone_original')}">`, { iconName: 'whatsapp', hint: 'Celular colombiano o número internacional con indicativo.' })}
+      </div><div class="cf-duplicate" data-duplicate role="status" hidden></div>`, '<span class="flow-step__state" data-state="contact">Obligatorio</span>')}
+      ${step(2, 'profile', 'Perfil del cliente', 'Datos opcionales que mejoran el seguimiento, las entregas y los saludos de cumpleaños.', `<div class="cf-grid">
+        ${field('city', 'Ciudad', `<input id="cf-city" name="city" maxlength="80" autocomplete="off" placeholder="Ej. Valledupar" value="${value('city')}">`, { optional: true, iconName: 'pin' })}
+        ${field('birth_date', 'Fecha de nacimiento', `<input id="cf-birth_date" name="birth_date" type="date" min="1900-01-01" max="${today}" value="${value('birth_date')}">`, { optional: true, hint: 'Activa el recordatorio de cumpleaños.' })}
+        ${field('address', 'Dirección habitual', `<input id="cf-address" name="address" maxlength="250" autocomplete="off" placeholder="Barrio, calle y número" value="${value('address')}">`, { optional: true, full: true, iconName: 'navigation' })}
+        ${field('identification', 'Documento de identificación', `<input id="cf-identification" name="identification" maxlength="40" autocomplete="off" placeholder="Cédula o NIT" value="${value('identification')}">`, { optional: true, iconName: 'shield', hint: 'Privado: solo lo ve el equipo del panel.' })}
+      </div>`, '<span class="flow-step__state flow-step__state--soft" data-state="profile">Opcional</span>')}
+    </div>
+    <aside class="flow-form__aside">
+      <section class="cf-preview" aria-label="Vista previa de la ficha">
+        <header><span>Vista previa</span><b data-preview-percent>0 %</b></header>
+        <div class="cf-preview__id"><span class="cf-preview__avatar" data-preview-avatar>?</span><div><strong data-preview-name>Nuevo cliente</strong><small data-preview-phone>Sin teléfono</small></div></div>
+        <ul class="cf-preview__facts"><li data-preview-city>${icon('pin', { size: 15 })}<span></span></li><li data-preview-birth>${icon('star', { size: 15 })}<span></span></li><li data-preview-source>${icon('info', { size: 15 })}<span></span></li><li data-preview-consent>${icon('mail', { size: 15 })}<span></span></li></ul>
+        <div class="cf-meter"><span class="cf-meter__track"><span data-preview-meter></span></span><small data-preview-missing></small></div>
+      </section>
+      ${step(3, 'source', 'Origen', '¿Cómo llegó este cliente?', `<fieldset class="flow-choice"><legend class="sr-only">Origen del cliente</legend><div class="flow-choice__grid cf-sources">${sources.map(([key, hint, iconName]) => `<label class="flow-choice__opt"><input type="radio" name="source" value="${escapeHtml(key)}" ${key === currentSource ? 'checked' : ''}><span class="flow-choice__card">${icon(iconName, { size: 20 })}<strong>${escapeHtml(SOURCES[key] || key)}</strong><small>${hint}</small></span></label>`).join('')}</div></fieldset>`, '')}
+      <label class="flow-switch"><input name="marketing_consent" type="checkbox" role="switch" ${customer && marketingAllowed(customer) ? 'checked' : ''}><span class="flow-switch__switch" aria-hidden="true"></span><span class="flow-switch__text"><strong>Autorizó contacto promocional</strong><small>Felicitaciones de cumpleaños, ofertas y promociones. ${consentVersion ? `Texto aceptado: versión ${escapeHtml(consentVersion)}.` : 'El texto de autorización está pendiente en Configuración.'}</small></span></label>
+      <details class="flow-notes" ${customer?.notes ? 'open' : ''}><summary>${icon('pencil', { size: 16 })}<span>Notas internas</span><small data-notes-state>${customer?.notes ? 'Con información' : 'Opcional'}</small>${icon('chevronDown', { size: 16 })}</summary><label class="flow-notes__body"><span class="sr-only">Notas internas</span><textarea name="notes" rows="3" placeholder="Preferencias, horarios de contacto, referencias…">${escapeHtml(customer?.notes || '')}</textarea></label></details>
+    </aside>
+  </div>
+  <div class="flow-form__footer">
+    <p class="product-form-error flow-form__error" data-error role="alert" tabindex="-1" hidden></p>
+    <ul class="flow-form__ready" aria-label="Datos requeridos"><li data-ready="full_name">${icon('check', { size: 13 })}Nombre</li><li data-ready="phone_original">${icon('check', { size: 13 })}Teléfono</li></ul>
+    <div class="flow-form__actions"><button class="btn btn--ghost" data-cancel type="button">Cancelar</button><button class="btn btn--primary" type="submit">${customer ? 'Guardar cambios' : 'Crear cliente'}</button></div>
+  </div>`;
+
+  const el = name => form.elements[name];
+  const touched = new Set();
+  let others = [];
+  // La búsqueda de duplicados no bloquea la apertura: si la lista no llega, simplemente no avisa.
+  getCustomers().then(list => { others = list.filter(item => item.id !== customer?.id && !item.archived_at); sync(); }).catch(() => {});
+  const problems = () => ({
+    full_name: String(el('full_name').value).trim().length < 2 ? 'Escribe el nombre completo (mínimo 2 letras).' : '',
+    phone_original: phoneDigits(el('phone_original').value).length < 8 ? 'Escribe un teléfono válido (mínimo 8 dígitos).' : '',
+    birth_date: el('birth_date').value && !isValidBirthDate(el('birth_date').value, today) ? 'La fecha no puede ser futura ni anterior a 1900.' : ''
+  });
+  const showFieldErrors = (all = false) => Object.entries(problems()).forEach(([name, message]) => {
+    const visible = Boolean(message) && (all || touched.has(name));
+    const error = form.querySelector(`[data-field-error="${name}"]`); error.textContent = visible ? message : ''; error.hidden = !visible;
+    el(name).setAttribute('aria-invalid', String(visible)); form.querySelector(`[data-field="${name}"]`).classList.toggle('has-error', visible);
+  });
+  const sync = () => {
+    const name = String(el('full_name').value).trim(); const phone = String(el('phone_original').value).trim(); const issues = problems();
+    const ready = { full_name: !issues.full_name, phone_original: !issues.phone_original };
+    Object.entries(ready).forEach(([key, done]) => form.querySelector(`[data-ready="${key}"]`).classList.toggle('is-done', done));
+    const contactDone = ready.full_name && ready.phone_original;
+    form.querySelector('[data-step="contact"]').classList.toggle('is-done', contactDone);
+    form.querySelector('[data-state="contact"]').textContent = contactDone ? 'Listo' : 'Obligatorio';
+    // Teléfono: formato con el que se guardará y aviso de ficha duplicada.
+    form.querySelector('[data-hint="phone_original"]').textContent = ready.phone_original ? `Se contactará por WhatsApp al ${phonePreview(phone)}.` : 'Celular colombiano o número internacional con indicativo.';
+    const key = phoneKey(phone); const duplicate = key.length >= 8 ? others.find(item => phoneKey(item.phone_normalized || item.phone_original) === key) : null;
+    const duplicateBox = form.querySelector('[data-duplicate]'); duplicateBox.hidden = !duplicate;
+    duplicateBox.innerHTML = duplicate ? `${icon('alert', { size: 18 })}<div><strong>Este teléfono ya está registrado</strong><span>${escapeHtml(duplicate.full_name)}${duplicate.city ? ` · ${escapeHtml(duplicate.city)}` : ''}. Revisa que no estés creando una ficha duplicada.</span></div>` : '';
+    // Cumpleaños: edad y días que faltan.
+    const birth = el('birth_date').value; const info = !issues.birth_date && birth ? birthdayInfo(birth, today) : null;
+    const birthText = info ? `${info.age} años · ${info.days === 0 ? '¡cumple hoy!' : `cumple ${info.turning} en ${plural(info.days, 'día', 'días')}`}` : '';
+    form.querySelector('[data-hint="birth_date"]').textContent = info ? birthText : 'Activa el recordatorio de cumpleaños.';
+    const optional = ['city', 'birth_date', 'address', 'identification'];
+    const filled = optional.filter(item => String(el(item).value).trim()).length;
+    form.querySelector('[data-step="profile"]').classList.toggle('is-done', filled === optional.length);
+    form.querySelector('[data-state="profile"]').textContent = filled ? `${filled} de ${optional.length}` : 'Opcional';
+    // Vista previa y completitud de la ficha.
+    const percent = Math.round(((ready.full_name ? 1 : 0) + (ready.phone_original ? 1 : 0) + filled) / (optional.length + 2) * 100);
+    form.querySelector('[data-preview-avatar]').textContent = name ? initials(name) : '?';
+    form.querySelector('[data-preview-name]').textContent = name || (customer ? 'Cliente' : 'Nuevo cliente');
+    form.querySelector('[data-preview-phone]').textContent = ready.phone_original ? phonePreview(phone) : 'Sin teléfono';
+    const fact = (key, text, empty) => { const item = form.querySelector(`[data-preview-${key}]`); item.querySelector('span').textContent = text || empty; item.classList.toggle('is-empty', !text); };
+    fact('city', String(el('city').value).trim(), 'Ciudad sin registrar');
+    fact('birth', info ? `Cumpleaños ${new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${birth}T12:00:00Z`))} · ${info.age} años` : '', 'Cumpleaños sin registrar');
+    fact('source', `Origen: ${SOURCES[form.querySelector('[name="source"]:checked')?.value] || 'Manual'}`, '');
+    fact('consent', el('marketing_consent').checked ? 'Acepta contacto promocional' : '', 'Sin autorización promocional');
+    form.querySelector('[data-preview-percent]').textContent = `${percent} %`;
+    form.querySelector('[data-preview-meter]').style.width = `${percent}%`;
+    const labels = { city: 'ciudad', birth_date: 'cumpleaños', address: 'dirección', identification: 'documento' };
+    const missing = optional.filter(item => !String(el(item).value).trim()).map(item => labels[item]);
+    form.querySelector('[data-preview-missing]').textContent = percent === 100 ? 'Ficha completa.' : missing.length ? `Puedes agregar: ${missing.join(', ')}.` : 'Completa los datos de contacto.';
+    if (touched.size) showFieldErrors();
+    // El aviso de validación del pie desaparece en cuanto los datos quedan correctos.
+    const footerError = form.querySelector('[data-error]');
+    if (footerError.dataset.kind === 'validation' && !Object.values(issues).some(Boolean)) footerError.hidden = true;
+  };
+  form.addEventListener('input', sync);
+  form.addEventListener('change', sync);
+  form.addEventListener('focusout', event => { if (event.target.name in problems()) { touched.add(event.target.name); showFieldErrors(); } });
+  el('notes').addEventListener('input', () => { form.querySelector('[data-notes-state]').textContent = el('notes').value.trim() ? 'Con información' : 'Opcional'; });
+  sync();
+
   const signature = () => JSON.stringify(Object.fromEntries(new FormData(form)));
   const guard = guardUnsaved(signature);
-  const modal = openModal({ title: customer ? 'Editar cliente' : 'Nuevo cliente', content: form, trigger, closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  const modal = openModal({ title: customer ? 'Editar cliente' : 'Nuevo cliente', description: customer ? `Actualiza la ficha de ${customer.full_name}.` : 'Crea la ficha en segundos: solo el nombre y el teléfono son obligatorios.', headerIcon: icon('user', { size: 22 }), content: form, trigger, className: 'modal--wide modal--flow modal--customer', initialFocus: '#cf-full_name', closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  form.querySelector('[data-cancel]').addEventListener('click', () => modal.close());
+  let saving = false;
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (saving) return;
     const data = new FormData(form);
-    const error = form.querySelector('[data-error]');
+    const error = form.querySelector('[data-error]'); error.hidden = true;
     const birth = data.get('birth_date');
-    const problem = String(data.get('full_name')).trim().length < 2 ? 'Escribe el nombre completo.' : String(data.get('phone_original')).replace(/\D/g, '').length < 8 ? 'Escribe un teléfono válido.' : birth && !isValidBirthDate(birth, today) ? 'La fecha de nacimiento no puede ser futura ni anterior a 1900.' : '';
-    if (problem) { error.textContent = problem; error.hidden = false; return; }
+    const issues = problems(); const firstInvalid = Object.keys(issues).find(name => issues[name]);
+    if (firstInvalid) {
+      Object.keys(issues).forEach(name => touched.add(name)); showFieldErrors(true);
+      error.textContent = issues[firstInvalid]; error.dataset.kind = 'validation'; error.hidden = false;
+      el(firstInvalid).focus(); el(firstInvalid).scrollIntoView({ block: 'center', behavior: 'smooth' }); return;
+    }
     const button = event.submitter || form.querySelector('[type="submit"]');
-    setButtonLoading(button, true, 'Guardando…');
+    saving = true; modal.setDismissible(false); setButtonLoading(button, true, 'Guardando…');
     try {
       const saved = await saveCustomer({ full_name: data.get('full_name'), phone_original: data.get('phone_original'), city: data.get('city'), address: data.get('address'), birth_date: birth || null, identification: data.get('identification'), source: data.get('source'), notes: String(data.get('notes') || '').trim() || null }, customer?.id);
       const consent = data.has('marketing_consent');
       if (consent !== Boolean(customer && marketingAllowed(customer)) && (consent || customer)) await recordConsent(saved.id, 'marketing_birthday', consent, config.marketing_consent_version, 'admin');
-      toast('Cliente guardado'); modal.close(true); await onSaved?.(saved);
-    } catch (saveError) { error.textContent = requestError(saveError, 'No pudimos guardar el cliente.'); error.hidden = false; setButtonLoading(button, false); }
+      toast(customer ? 'Cliente actualizado' : 'Cliente creado'); modal.close(true); await onSaved?.(saved);
+    } catch (saveError) {
+      saving = false; modal.setDismissible(true); setButtonLoading(button, false);
+      error.textContent = requestError(saveError, 'No pudimos guardar el cliente.'); error.dataset.kind = 'save'; error.hidden = false; error.focus();
+    }
   });
 }
 
@@ -947,7 +1167,9 @@ async function openCustomerProfile(customer, refresh, trigger = null) {
 }
 
 async function openMergeForm(customer, after, trigger) {
-  const candidates = (await getCustomers()).filter(item => item.id !== customer.id);
+  const all = await withLoading(getCustomers, { title: 'Buscando fichas duplicadas', steps: ['Cargando la lista de clientes…'], trigger });
+  if (!all) return;
+  const candidates = all.filter(item => item.id !== customer.id);
   const form = document.createElement('form');
   form.className = 'admin-form';
   form.innerHTML = `<p class="form-help">Elige la ficha duplicada. Sus pedidos, cotizaciones, ventas y autorizaciones pasarán a <strong>${escapeHtml(customer.full_name)}</strong>; los campos vacíos se completan con los del duplicado y el duplicado queda archivado. No se borra ningún documento.</p><div class="form-grid">${customerPickerMarkup(candidates, '', { allowCreate: false })}</div><div class="form-actions"><button class="btn btn--primary" type="submit">Revisar fusión</button></div>`;
@@ -1130,72 +1352,258 @@ function bindOrderRow(card, order, refresh) {
 
 const CONFLICT_LABELS = { full_name: 'Nombre', city: 'Ciudad', address: 'Dirección', birth_date: 'Fecha de nacimiento', cliente_archivado: 'Cliente archivado', telefono_de_ficha_fusionada: 'Teléfono de ficha fusionada' };
 
+// Avance del pedido: recibido → contactado → confirmado → venta. Cancelado/abandonado cierran el flujo.
+const ORDER_FLOW = [['pendiente', 'Recibido', 'bag'], ['contactado', 'Contactado', 'chat'], ['confirmado', 'Confirmado', 'checkCircle'], ['venta', 'En venta', 'wallet']];
+const ORDER_STATUS_HINT = { pendiente: 'Aún nadie lo atiende', contactado: 'Ya hablaste con el cliente', confirmado: 'El cliente confirmó la compra', cancelado: 'El cliente desistió', abandonado: 'Sin respuesta del cliente' };
+
+function orderFlowMarkup(order) {
+  const closed = ['cancelado', 'abandonado'].includes(order.status);
+  const reached = order.sales?.length ? ORDER_FLOW.length : Math.max(0, ORDER_FLOW.findIndex(([key]) => key === order.status));
+  const steps = closed ? [...ORDER_FLOW.slice(0, 1), [order.status, ORDER_STATUS[order.status], 'x']] : ORDER_FLOW;
+  return `<ol class="od-progress${closed ? ' od-progress--closed' : ''}" aria-label="Avance del pedido">${steps.map(([key, label, iconName], index) => {
+    const state = closed ? (index === 0 ? 'done' : 'closed') : index < reached ? 'done' : index === reached ? 'current' : 'todo';
+    return `<li class="is-${state}" ${state === 'current' || state === 'closed' ? 'aria-current="step"' : ''}><span class="od-progress__dot" aria-hidden="true">${icon(state === 'done' ? 'check' : iconName, { size: 14 })}</span><span class="od-progress__label">${escapeHtml(label)}</span></li>`;
+  }).join('')}</ol>`;
+}
+
 function openOrderDetail(order, refresh, trigger, { fromProfile = false } = {}) {
   const customer = order.customers || {};
   const conflicts = Object.entries(order.customer_conflicts || {});
   const items = docItems('order', order);
-  const wrapper = document.createElement('div');
-  wrapper.className = 'doc-detail';
-  wrapper.innerHTML = `${docHeroMarkup({ kicker: `Pedido · ${SOURCES[order.source] || order.source}`, status: `${pill(order.status, ORDER_STATUS)}${order.sales?.length ? ` <span class="status-pill status-pill--success">Venta ${escapeHtml(order.sales[0].sale_number)}</span>` : ''}`, meta: [`Registrado ${dateTimeText(order.created_at)}`], total: order.total, items })}
-    ${conflicts.length ? `<section class="notice-box"><h3>Datos distintos a la ficha del cliente</h3><p>El teléfono no verifica identidad: revisa antes de aplicar.</p><ul class="history-list">${conflicts.map(([key, value]) => `<li><span>${escapeHtml(CONFLICT_LABELS[key] || key)}: <strong>${escapeHtml(String(value))}</strong>${['full_name', 'city', 'address', 'birth_date'].includes(key) ? ` <small>(ficha: ${escapeHtml(String(customer[key] ?? '—'))})</small>` : ''}</span>${['full_name', 'city', 'address', 'birth_date'].includes(key) ? `<button class="small-btn" data-apply="${key}" type="button">Aplicar a la ficha</button>` : ''}</li>`).join('')}</ul></section>` : ''}
-    <div class="info-cards">
-      ${infoCard('user', 'Cliente', customerCardBody(customer.full_name, customer.phone_original, customer.city), customerLink(order.customer_id, fromProfile))}
-      ${infoCard('truck', 'Entrega', `<p><strong>${escapeHtml(order.delivery_name || 'Sin definir')}</strong>${order.shipping_city ? `<span>${escapeHtml(order.shipping_city)}</span>` : ''}${order.shipping_address ? `<span>${escapeHtml(order.shipping_address)}</span>` : ''}</p>`)}
-      ${infoCard('wallet', 'Pago y contacto', `<p><strong>${escapeHtml(order.payment_name || 'Pago sin definir')}</strong><span>${order.whatsapp_opened_at ? `WhatsApp preparado ${dateTimeText(order.whatsapp_opened_at)} (no confirma envío)` : 'Sin registro de apertura de WhatsApp'}</span></p>`)}
-      ${infoCard('check', 'Aceptación legal', order.legal_accepted_at ? `<p><strong>Aceptó Términos y Política</strong><span>${dateTimeText(order.legal_accepted_at)}</span><span>Términos ${escapeHtml(order.terms_version || '—')} · Política ${escapeHtml(order.data_policy_version || '—')}</span></p>` : `<p><strong>${order.source === 'tienda' ? 'Sin aceptación registrada' : 'Pedido registrado por el panel'}</strong><span>${order.source === 'tienda' ? 'Pedido anterior a la aceptación obligatoria' : 'Confirma la aceptación por el canal de contacto'}</span></p>`)}
+  const sale = order.sales?.[0] || null;
+  const phone = waDigits(customer);
+  const editable = ['full_name', 'city', 'address', 'birth_date'];
+  const activity = [
+    [order.created_at, 'bag', 'Pedido registrado', SOURCES[order.source] || order.source],
+    [order.legal_accepted_at, 'shield', 'Aceptó Términos y Política', `Términos ${order.terms_version || '—'} · Política ${order.data_policy_version || '—'}`],
+    [order.whatsapp_opened_at, 'whatsapp', 'WhatsApp preparado', 'Abrir WhatsApp no confirma que el mensaje se envió'],
+    [order.updated_at && order.updated_at !== order.created_at ? order.updated_at : null, 'clock', 'Última actualización', ORDER_STATUS[order.status] || order.status]
+  ].filter(([when]) => when).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+  const form = document.createElement('form');
+  form.className = 'admin-form flow-form order-detail';
+  form.noValidate = true;
+  form.innerHTML = `<div class="flow-form__body od-body">
+    <section class="od-hero">
+      <div class="od-hero__top">
+        <div class="od-hero__id"><span class="od-hero__kicker">${icon(order.source === 'tienda' ? 'store' : order.source === 'WhatsApp' ? 'whatsapp' : 'pencil', { size: 14 })}Pedido · ${escapeHtml(SOURCES[order.source] || order.source)}</span><div class="od-hero__pills">${pill(order.status, ORDER_STATUS)}${sale ? `<span class="status-pill status-pill--success">Venta ${escapeHtml(sale.sale_number)}</span>` : ''}</div><p>Registrado ${dateTimeText(order.created_at)}</p></div>
+        <div class="od-hero__amount"><small>Total del pedido</small><strong>${formatMoney(order.total)}</strong><span>${plural(items.length, 'producto')} · ${plural(docUnits(items), 'unidad', 'unidades')}</span></div>
+      </div>
+      ${orderFlowMarkup(order)}
+    </section>
+    ${conflicts.length ? `<section class="notice-box od-conflicts"><div class="od-conflicts__head">${icon('alert', { size: 20 })}<div><h3>Datos distintos a la ficha del cliente</h3><p>El cliente escribió datos diferentes a los de su ficha. El teléfono no verifica identidad: revisa antes de aplicar.</p></div></div><ul>${conflicts.map(([key, value]) => `<li><div><small>${escapeHtml(CONFLICT_LABELS[key] || key)}</small><strong>${escapeHtml(String(value))}</strong>${editable.includes(key) ? `<span>En la ficha: ${escapeHtml(String(customer[key] ?? '—'))}</span>` : ''}</div>${editable.includes(key) ? `<button class="small-btn" data-apply="${key}" type="button">Aplicar a la ficha</button>` : ''}</li>`).join('')}</ul></section>` : ''}
+    <div class="od-layout">
+      <div class="od-main">
+        <section class="doc-section od-products"><header><h3>${icon('package', { size: 18 })}Productos solicitados</h3><span>${plural(items.length, 'línea')}</span></header>${docLinesMarkup(items, { doc: order })}${docTotalsMarkup(order, items)}${couponDetailMarkup(order)}</section>
+        ${order.notes ? `<section class="od-note">${icon('chat', { size: 18 })}<div><small>Observaciones del cliente</small><p>${escapeHtml(order.notes)}</p></div></section>` : ''}
+        <section class="od-manage" aria-labelledby="od-manage-title">
+          <header><h3 id="od-manage-title">${icon('sliders', { size: 18 })}Gestionar pedido</h3><span class="od-manage__state" data-dirty-state>Sin cambios</span></header>
+          <fieldset class="od-status"><legend>Estado del pedido</legend><div class="od-status__grid">${Object.entries(ORDER_STATUS).map(([value, label]) => `<label class="od-status__opt od-status__opt--${value}"><input type="radio" name="status" value="${value}" ${order.status === value ? 'checked' : ''}><span><i aria-hidden="true"></i><strong>${label}</strong><small>${ORDER_STATUS_HINT[value] || ''}</small></span></label>`).join('')}</div></fieldset>
+          <label class="od-notes">Notas internas <small>Solo las ve el equipo</small><textarea name="admin_notes" rows="3" placeholder="Ej. llamó a las 3 p. m., confirma mañana…">${escapeHtml(order.admin_notes || '')}</textarea></label>
+        </section>
+      </div>
+      <aside class="od-aside">
+        <section class="od-card od-customer">
+          <div class="od-customer__id"><span class="od-customer__avatar" aria-hidden="true">${escapeHtml(initials(customer.full_name))}</span><div><small>Cliente</small><strong>${escapeHtml(customer.full_name || '—')}</strong>${customer.phone_original ? `<span>${escapeHtml(customer.phone_original)}</span>` : ''}${customer.city ? `<span>${escapeHtml(customer.city)}</span>` : ''}</div></div>
+          <div class="od-customer__actions">${phone ? `<a class="small-btn od-wa" href="${waLink(phone, `Hola ${firstName(customer.full_name)}, te escribimos de ${businessName()} sobre tu pedido ${order.order_number}.`)}" target="_blank" rel="noopener">${icon('whatsapp', { size: 16 })}WhatsApp</a>` : ''}${customerLink(order.customer_id, fromProfile).replace('class="link-btn"', 'class="small-btn"').replace('Ver ficha y análisis →', `${icon('user', { size: 16 })}Ver ficha`)}</div>
+        </section>
+        <section class="od-card">
+          <h3>Entrega y pago</h3>
+          <dl class="od-facts">
+            <div><dt>${icon('truck', { size: 16 })}Entrega</dt><dd><strong>${escapeHtml(order.delivery_name || 'Sin definir')}</strong>${order.shipping_city || order.shipping_address ? `<span>${escapeHtml([order.shipping_address, order.shipping_city].filter(Boolean).join(', '))}</span>` : ''}<span>Costo: ${Number(order.delivery_cost) ? formatMoney(order.delivery_cost) : 'sin costo'}</span></dd></div>
+            <div><dt>${icon('wallet', { size: 16 })}Pago preferido</dt><dd><strong>${escapeHtml(order.payment_name || 'Sin definir')}</strong></dd></div>
+            <div><dt>${icon('shield', { size: 16 })}Aceptación legal</dt><dd>${order.legal_accepted_at ? `<strong class="od-ok">Aceptó Términos y Política</strong><span>${dateTimeText(order.legal_accepted_at)}</span>` : `<strong>${order.source === 'tienda' ? 'Sin aceptación registrada' : 'Registrado por el panel'}</strong><span>${order.source === 'tienda' ? 'Pedido anterior a la aceptación obligatoria' : 'Confirma la aceptación por el canal de contacto'}</span>`}</dd></div>
+          </dl>
+        </section>
+        <section class="od-card">
+          <h3>Actividad</h3>
+          <ol class="od-timeline">${activity.map(([when, iconName, title, detail]) => `<li><span class="od-timeline__dot" aria-hidden="true">${icon(iconName, { size: 13 })}</span><div><strong>${escapeHtml(title)}</strong><small>${dateTimeText(when)}${detail ? ` · ${escapeHtml(detail)}` : ''}</small></div></li>`).join('')}${sale ? `<li class="is-sale"><span class="od-timeline__dot" aria-hidden="true">${icon('wallet', { size: 13 })}</span><div><strong>Convertido en venta ${escapeHtml(sale.sale_number)}</strong><small>Estado de la venta: ${escapeHtml(SALE_STATUS[sale.status] || sale.status || '—')}</small></div></li>` : ''}</ol>
+        </section>
+      </aside>
     </div>
-    ${order.notes ? `<div class="doc-note"><small>Observaciones del cliente</small><p>${escapeHtml(order.notes)}</p></div>` : ''}
-    <section class="doc-section"><header><h3>Productos solicitados</h3><span>${plural(items.length, 'línea')}</span></header>${docLinesMarkup(items, { doc: order })}${docTotalsMarkup(order, items)}${couponDetailMarkup(order)}</section>
-    <form class="admin-form order-status-form" data-status-form><div class="form-grid"><fieldset class="status-picker form-grid__full"><legend>Estado del pedido</legend><div class="status-picker__options">${Object.entries(ORDER_STATUS).map(([value, label]) => `<label class="status-option status-option--${value}"><input type="radio" name="status" value="${value}" ${order.status === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></fieldset><label class="form-grid__full">Notas internas<textarea name="admin_notes" rows="2">${escapeHtml(order.admin_notes || '')}</textarea></label></div><div class="form-actions order-actions"><button class="btn btn--ghost" type="submit">${icon('check', { size: 18 })}<span>Guardar<span class="order-actions__long"> cambios</span></span></button>${waDigits(customer) ? `<a class="btn btn--ghost" href="${waLink(waDigits(customer), `Hola ${firstName(customer.full_name)}, te escribimos de ${businessName()} sobre tu pedido ${order.order_number}.`)}" target="_blank" rel="noopener">${icon('whatsapp', { size: 18 })}<span>WhatsApp</span></a>` : ''}${order.sales?.length ? '' : `<button class="btn btn--primary" data-to-sale type="button"><span>Convertir a venta</span>${icon('arrowRight', { size: 18 })}</button>`}</div></form>`;
-  const modal = openModal({ title: `Pedido ${order.order_number}`, content: wrapper, trigger, className: 'modal--wide modal--doc' });
-  bindCustomerLinks(wrapper);
-  wrapper.querySelector('[data-status-form]').addEventListener('submit', async event => {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const button = event.submitter;
+  </div>
+  <div class="flow-form__footer od-footer">
+    <p class="od-footer__hint" data-footer-hint>${sale ? `Este pedido ya se convirtió en la venta <b>${escapeHtml(sale.sale_number)}</b>.` : 'Cuando el cliente confirme, conviértelo en venta para cobrar y descontar inventario.'}</p>
+    <div class="flow-form__actions od-actions">
+      <button class="btn btn--ghost" type="submit" data-save disabled>${icon('check', { size: 18 })}<span>Guardar cambios</span></button>
+      ${sale ? `<button class="btn btn--primary" data-go-sale type="button"><span>Ver venta ${escapeHtml(sale.sale_number)}</span>${icon('arrowRight', { size: 18 })}</button>` : `<button class="btn btn--primary" data-to-sale type="button"><span>Convertir a venta</span>${icon('arrowRight', { size: 18 })}</button>`}
+    </div>
+  </div>`;
+  const initial = { status: order.status, notes: order.admin_notes || '' };
+  const current = () => ({ status: form.querySelector('[name="status"]:checked')?.value || order.status, notes: form.elements.admin_notes.value.trim() });
+  const dirty = () => { const now = current(); return now.status !== initial.status || now.notes !== initial.notes.trim(); };
+  const syncDirty = () => {
+    const changed = dirty(); form.querySelector('[data-save]').disabled = !changed;
+    const state = form.querySelector('[data-dirty-state]'); state.textContent = changed ? 'Cambios sin guardar' : 'Sin cambios'; state.classList.toggle('is-dirty', changed);
+  };
+  form.addEventListener('input', syncDirty); form.addEventListener('change', syncDirty);
+  const modal = openModal({ title: `Pedido ${order.order_number}`, description: `${customer.full_name || 'Cliente'} · ${SOURCES[order.source] || order.source} · ${dateTimeText(order.created_at)}`, headerIcon: icon('bag', { size: 22 }), content: form, trigger, className: 'modal--wide modal--flow modal--order-detail', closeOnBackdrop: false, beforeClose: async () => !dirty() || confirmAction('Cambiaste el estado o las notas y no los has guardado.', 'Descartar cambios', { confirmLabel: 'Descartar cambios', cancelLabel: 'Seguir editando' }) });
+  bindCustomerLinks(form);
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (!dirty()) return;
+    const button = form.querySelector('[data-save]'); const now = current();
     setButtonLoading(button, true, 'Guardando…');
-    try { await updateOrder(order.id, { status: data.get('status'), admin_notes: String(data.get('admin_notes') || '').trim() || null }); toast('Pedido actualizado'); modal.close(true); await refresh(); }
+    try { await updateOrder(order.id, { status: now.status, admin_notes: now.notes || null }); toast('Pedido actualizado'); modal.close(true); await refresh(); }
     catch (error) { toast(requestError(error, 'No pudimos actualizar el pedido.'), 'error'); setButtonLoading(button, false); }
   });
-  wrapper.querySelectorAll('[data-apply]').forEach(button => button.addEventListener('click', async () => {
+  form.querySelectorAll('[data-apply]').forEach(button => button.addEventListener('click', async () => {
     const key = button.dataset.apply;
     setButtonLoading(button, true, 'Aplicando…');
-    try { await saveCustomer({ [key]: order.customer_conflicts[key] }, order.customer_id); toast('Ficha actualizada'); button.replaceWith(Object.assign(document.createElement('small'), { textContent: 'Aplicado' })); }
+    try { await saveCustomer({ [key]: order.customer_conflicts[key] }, order.customer_id); toast('Ficha actualizada'); button.replaceWith(Object.assign(document.createElement('span'), { className: 'od-applied', textContent: '✓ Aplicado' })); }
     catch (error) { toast(requestError(error, 'No pudimos actualizar la ficha.'), 'error'); setButtonLoading(button, false); }
   }));
-  wrapper.querySelector('[data-to-sale]')?.addEventListener('click', async event => {
+  form.querySelector('[data-go-sale]')?.addEventListener('click', () => { modal.close(true); ctx.navigateTo('sales', { q: sale.sale_number }); });
+  form.querySelector('[data-to-sale]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     setButtonLoading(button, true, 'Revisando…');
     try {
-      const sale = await runWithReview(accept => createSaleFromOrder(order.id, accept), button, 'Crear venta con importes del pedido');
-      if (!sale) { setButtonLoading(button, false); return; }
-      toast(`Venta ${sale.sale_number} creada. Confírmala para descontar inventario.`); modal.close(true); ctx.navigateTo('sales', { q: sale.sale_number });
+      const created = await runWithReview(accept => createSaleFromOrder(order.id, accept), button, 'Crear venta con importes del pedido');
+      if (!created) { setButtonLoading(button, false); return; }
+      toast(`Venta ${created.sale_number} creada. Confírmala para descontar inventario.`); modal.close(true); ctx.navigateTo('sales', { q: created.sale_number });
     } catch (error) { toast(requestError(error, 'No pudimos crear la venta.'), 'error'); setButtonLoading(button, false); }
   });
 }
 
+const ORDER_SOURCES = [['WhatsApp', 'WhatsApp', 'Por chat', 'whatsapp'], ['presencial', 'Presencial', 'En el local', 'store'], ['manual', 'Manual', 'Otro canal', 'pencil']];
+
 async function openOrderForm(refresh, trigger = null) {
-  const [customers, deliveries, payments] = await Promise.all([getCustomers(), getDeliveryMethods({ all: true }), getPaymentMethods({ all: true })]);
+  const loaded = await withLoading(() => Promise.all([getCustomers(), getDeliveryMethods({ all: true }), getPaymentMethods({ all: true })]), { title: 'Preparando nuevo pedido', steps: ['Cargando clientes…', 'Cargando métodos de entrega…', 'Cargando métodos de pago…'], trigger });
+  if (!loaded) return;
+  const [customers, allDeliveries, allPayments] = loaded;
+  const deliveries = allDeliveries.filter(item => item.active !== false);
+  const payments = allPayments.filter(item => item.active !== false);
+  const deliveryById = new Map(deliveries.map(item => [item.id, item]));
+  const costLabel = value => Number(value) > 0 ? formatMoney(Number(value)) : 'Sin costo';
+  const step = (number, key, title, hint, body, extra = '') => `<section class="flow-step" data-step="${key}"><header class="flow-step__head"><span class="flow-step__num" aria-hidden="true"><b>${number}</b>${icon('check', { size: 15 })}</span><div><h3>${title}</h3><p>${hint}</p></div>${extra}</header>${body}</section>`;
   const form = document.createElement('form');
-  form.className = 'admin-form';
-  form.innerHTML = `<p class="form-help">Registra aquí los pedidos que llegan por WhatsApp o en persona. Usa precios vigentes del catálogo y no descuenta inventario.</p><div class="form-grid">${customerPickerMarkup(customers)}<label>Origen<select name="source"><option value="WhatsApp">WhatsApp</option><option value="presencial">Presencial</option><option value="manual">Manual</option></select></label><label>Entrega<select name="delivery_method_id"><option value="">Sin definir</option>${deliveries.map(item => `<option value="${item.id}" data-cost="${item.base_cost}">${escapeHtml(item.name)}</option>`).join('')}</select></label><label>Costo de entrega (COP)<input name="delivery_cost" data-money type="text" inputmode="decimal" value="0"></label><label>Pago preferido<select name="payment_method_id"><option value="">Sin definir</option>${payments.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}</select></label><label>Ciudad de envío<input name="city" maxlength="80"></label><label class="form-grid__full">Dirección de envío<input name="address" maxlength="250"></label>${lineEditorMarkup()}<label class="form-grid__full">Observaciones<textarea name="notes" rows="2"></textarea></label></div><p class="product-form-error" data-error role="alert" hidden></p><div class="form-actions"><button class="btn btn--primary" type="submit">Registrar pedido</button></div>`;
-  const editor = mountLineEditor(form, { deliveryInput: form.elements.delivery_cost });
+  form.className = 'admin-form flow-form order-form';
+  form.noValidate = true;
+  form.innerHTML = `<div class="flow-form__body form-grid">
+    <div class="flow-form__main">
+      ${step(1, 'customer', 'Cliente', 'Busca por nombre, teléfono o documento, o créalo en un clic.', customerPickerMarkup(customers), '<span class="flow-step__state" data-state="customer">Pendiente</span>')}
+      ${step(2, 'lines', 'Productos', 'Se usan los precios vigentes del catálogo.<span class="flow-hint-keys"> · ↑ ↓ y Enter para agregar rápido</span>', lineEditorMarkup(), '<span class="flow-step__state" data-state="lines">Pendiente</span>')}
+      ${step(3, 'delivery', 'Entrega', 'Elige cómo recibirá el pedido; el costo se completa solo y puedes ajustarlo.', `
+        <fieldset class="flow-choice"><legend class="sr-only">Método de entrega</legend><div class="flow-choice__grid of-deliveries">
+          <label class="flow-choice__opt"><input type="radio" name="delivery_method_id" value="" checked><span class="flow-choice__card">${icon('clock', { size: 20 })}<strong>Sin definir</strong><small>Se acuerda después</small></span></label>
+          ${deliveries.map(item => `<label class="flow-choice__opt"><input type="radio" name="delivery_method_id" value="${item.id}"><span class="flow-choice__card">${icon(item.requires_address ? 'truck' : 'store', { size: 20 })}<strong>${escapeHtml(item.name)}</strong><small>${costLabel(item.base_cost)}${item.requires_address ? ' · con dirección' : item.requires_city ? ' · con ciudad' : ''}</small></span></label>`).join('')}
+        </div></fieldset>
+        <div class="of-shipping">
+          <label class="flow-money">Costo de entrega <small data-cost-hint>COP</small><span class="flow-money__field"><b aria-hidden="true">$</b><input name="delivery_cost" data-money type="text" inputmode="decimal" value="0"></span></label>
+          <div class="of-address" data-address>
+            <p class="of-address__note" data-address-note></p>
+            <div class="of-address__grid">
+              <label>Ciudad de envío <small data-req="city">Opcional</small><span class="cf-control cf-control--icon">${icon('pin', { size: 18 })}<input name="city" maxlength="80" autocomplete="off" placeholder="Ej. Valledupar"></span></label>
+              <label class="of-address__wide">Dirección de envío <small data-req="address">Opcional</small><span class="cf-control cf-control--icon">${icon('navigation', { size: 18 })}<input name="address" maxlength="250" autocomplete="off" placeholder="Barrio, calle y número"></span></label>
+            </div>
+          </div>
+        </div>`, '<span class="flow-step__state flow-step__state--soft" data-state="delivery">Sin definir</span>')}
+    </div>
+    <aside class="flow-form__aside">
+      ${step(4, 'details', 'Origen y pago', 'Por dónde llegó el pedido y cómo prefiere pagar el cliente.', `
+        <fieldset class="flow-choice"><legend>Origen del pedido</legend><div class="flow-choice__grid">${ORDER_SOURCES.map(([value, label, hint, iconName], index) => `<label class="flow-choice__opt"><input type="radio" name="source" value="${value}" ${index === 0 ? 'checked' : ''}><span class="flow-choice__card">${icon(iconName, { size: 20 })}<strong>${label}</strong><small>${hint}</small></span></label>`).join('')}</div></fieldset>
+        <fieldset class="flow-pay of-pay"><legend>Pago preferido <small>Opcional</small></legend><div class="flow-pay__chips">
+          <label class="of-pay__opt"><input type="radio" name="payment_method_id" value="" checked><span class="flow-chip">Sin definir</span></label>
+          ${payments.map(item => `<label class="of-pay__opt"><input type="radio" name="payment_method_id" value="${item.id}"><span class="flow-chip">${escapeHtml(item.name)}</span></label>`).join('')}
+        </div></fieldset>
+        <details class="flow-notes"><summary>${icon('pencil', { size: 16 })}<span>Observaciones</span><small data-notes-state>Opcional</small>${icon('chevronDown', { size: 16 })}</summary><label class="flow-notes__body"><span class="sr-only">Observaciones</span><textarea name="notes" rows="3" placeholder="Ej. llamar antes de entregar, horario preferido…"></textarea></label></details>`)}
+      <section class="flow-summary" aria-label="Resumen del pedido">
+        <header><span>Resumen</span><b data-sum-units>Sin productos</b></header>
+        <dl><div><dt>Subtotal</dt><dd data-sum-gross>${formatMoney(0)}</dd></div><div><dt>Entrega</dt><dd data-sum-delivery>Sin costo</dd></div></dl>
+        <div class="flow-summary__total"><span>Total</span><strong data-sum-total>${formatMoney(0)}</strong></div>
+        <p class="flow-summary__mode">${icon('info', { size: 15 })}<span>Se registra como pedido <b>contactado</b>. No descuenta inventario: luego podrás convertirlo en venta.</span></p>
+      </section>
+    </aside>
+  </div>
+  <div class="flow-form__footer">
+    <p class="product-form-error flow-form__error" data-error role="alert" tabindex="-1" hidden></p>
+    <ul class="flow-form__ready" aria-label="Datos requeridos"><li data-ready="customer">${icon('check', { size: 13 })}Cliente</li><li data-ready="lines">${icon('check', { size: 13 })}Productos</li><li data-ready="delivery" hidden>${icon('check', { size: 13 })}Dirección</li></ul>
+    <div class="flow-form__total"><small>Total del pedido</small><strong data-footer-total>${formatMoney(0)}</strong></div>
+    <div class="flow-form__actions"><button class="btn btn--ghost" data-cancel type="button">Cancelar</button><button class="btn btn--primary" type="submit">Registrar pedido</button></div>
+  </div>`;
+
+  const el = name => form.elements[name];
+  const selectedDelivery = () => deliveryById.get(form.querySelector('[name="delivery_method_id"]:checked')?.value || '') || null;
+  const needs = () => { const method = selectedDelivery(); return { city: Boolean(method?.requires_city || method?.requires_address), address: Boolean(method?.requires_address) }; };
+  const addressUsed = () => { const method = selectedDelivery(); return !method || method.requires_city || method.requires_address; };
+  const addressProblem = () => { const need = needs(); return need.city && !String(el('city').value).trim() ? `Escribe la ciudad de envío (la requiere ${selectedDelivery().name}).` : need.address && !String(el('address').value).trim() ? `Escribe la dirección de envío (la requiere ${selectedDelivery().name}).` : ''; };
+  let editor = null;
+  let addressFromProfile = false;
+  const sync = totals => {
+    if (totals) {
+      form.querySelector('[data-sum-gross]').textContent = formatMoney(totals.gross);
+      form.querySelector('[data-sum-delivery]').textContent = totals.delivery ? formatMoney(totals.delivery) : 'Sin costo';
+      form.querySelector('[data-sum-total]').textContent = formatMoney(totals.total);
+      form.querySelector('[data-footer-total]').textContent = formatMoney(totals.total);
+    }
+    const items = editor?.items() || []; const units = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    form.querySelector('[data-sum-units]').textContent = items.length ? `${plural(items.length, 'producto', 'productos')} · ${plural(units, 'unidad', 'unidades')}` : 'Sin productos';
+    const method = selectedDelivery(); const need = needs(); const used = addressUsed();
+    const ready = { customer: Boolean(el('customer_id').value), lines: items.length > 0, delivery: !addressProblem() };
+    ['customer', 'lines'].forEach(key => {
+      form.querySelector(`[data-step="${key}"]`).classList.toggle('is-done', ready[key]);
+      form.querySelector(`[data-state="${key}"]`).textContent = ready[key] ? (key === 'lines' ? plural(items.length, 'producto', 'productos') : 'Listo') : 'Pendiente';
+    });
+    Object.entries(ready).forEach(([key, done]) => form.querySelector(`[data-ready="${key}"]`).classList.toggle('is-done', done));
+    form.querySelector('[data-ready="delivery"]').hidden = !(need.city || need.address);
+    form.querySelector('[data-step="delivery"]').classList.toggle('is-done', Boolean(method) && ready.delivery);
+    const deliveryState = form.querySelector('[data-state="delivery"]');
+    deliveryState.textContent = method ? (ready.delivery ? method.name : 'Falta dirección') : 'Sin definir';
+    deliveryState.classList.toggle('flow-step__state--soft', !method);
+    form.querySelector('[data-step="details"]').classList.toggle('is-done', ready.customer && ready.lines && ready.delivery);
+    // Dirección: visible si el método la usa (o si aún no hay método); obligatoria según el método.
+    const address = form.querySelector('[data-address]'); address.hidden = !used;
+    [['city', need.city], ['address', need.address]].forEach(([key, required]) => { const tag = form.querySelector(`[data-req="${key}"]`); tag.textContent = required ? 'Obligatoria' : 'Opcional'; tag.classList.toggle('is-required', required); });
+    form.querySelector('[data-address-note]').innerHTML = addressFromProfile ? `${icon('user', { size: 14 })}Tomada de la ficha del cliente; ajústala si este envío va a otro lugar.` : method ? '' : `${icon('info', { size: 14 })}Si ya conoces el destino, anótalo; si no, déjalo para después.`;
+    form.querySelector('[data-address-note]').hidden = !form.querySelector('[data-address-note]').innerHTML;
+    form.querySelector('[data-cost-hint]').textContent = method ? `COP · base de ${method.name}: ${costLabel(method.base_cost)}` : 'COP';
+  };
+  editor = mountLineEditor(form, { deliveryInput: el('delivery_cost'), onChange: totals => sync(totals) });
   bindCustomerPicker(form, customers);
-  form.elements.delivery_method_id.addEventListener('change', () => { form.elements.delivery_cost.value = editableMoney(Number(form.elements.delivery_method_id.selectedOptions[0]?.dataset.cost || 0)); form.elements.delivery_cost.dispatchEvent(new Event('input')); });
+  editor.total();
+  // Al elegir cliente, se completa la dirección con su ficha si aún está vacía.
+  el('customer_id').addEventListener('change', () => {
+    const chosen = customers.find(item => item.id === el('customer_id').value);
+    if (chosen && !el('city').value && !el('address').value && (chosen.city || chosen.address)) { el('city').value = chosen.city || ''; el('address').value = chosen.address || ''; addressFromProfile = true; }
+    sync();
+  });
+  ['city', 'address'].forEach(name => el(name).addEventListener('input', () => { addressFromProfile = false; sync(); }));
+  form.querySelectorAll('[name="delivery_method_id"]').forEach(input => input.addEventListener('change', () => {
+    el('delivery_cost').value = editableMoney(Number(selectedDelivery()?.base_cost || 0)); el('delivery_cost').dispatchEvent(new Event('input'));
+    sync(); if (addressProblem()) setTimeout(() => (needs().city && !el('city').value ? el('city') : el('address')).focus(), 50);
+  }));
+  form.querySelectorAll('[name="source"],[name="payment_method_id"]').forEach(input => input.addEventListener('change', () => sync()));
+  el('notes').addEventListener('input', () => { form.querySelector('[data-notes-state]').textContent = el('notes').value.trim() ? 'Con información' : 'Opcional'; });
+  sync();
+
   const guard = guardUnsaved(() => JSON.stringify(Object.fromEntries(new FormData(form))) + editor.signature());
-  const modal = openModal({ title: 'Registrar pedido', content: form, trigger, className: 'modal--wide', closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  const modal = openModal({ title: 'Registrar pedido', description: 'Pedido recibido por WhatsApp o en persona, con precios vigentes del catálogo.', headerIcon: icon('bag', { size: 22 }), content: form, trigger, className: 'modal--wide modal--flow modal--order', initialFocus: '[data-customer-search]', closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  form.querySelector('[data-cancel]').addEventListener('click', () => modal.close());
   const requestKey = crypto.randomUUID();
   let saving = false;
+  const showError = (message, target = null) => {
+    const error = form.querySelector('[data-error]'); error.textContent = message; error.hidden = false; error.dataset.kind = target ? 'validation' : 'save';
+    (target || error).focus({ preventScroll: !target }); target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  // Un aviso de validación se retira en cuanto el usuario corrige algo; los errores del servidor se quedan.
+  const clearValidation = () => { const error = form.querySelector('[data-error]'); if (error.dataset.kind === 'validation') error.hidden = true; };
+  form.addEventListener('input', clearValidation); form.addEventListener('change', clearValidation);
+  form.addEventListener('click', event => { if (event.target.closest('[data-line-option],[data-customer-option],[data-remove-line]')) clearValidation(); });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (saving) return;
-    const error = form.querySelector('[data-error]'); const data = new FormData(form);
+    form.querySelector('[data-error]').hidden = true; const data = new FormData(form);
     const delivery = parseMoneyInput(data.get('delivery_cost'));
-    const problem = !data.get('customer_id') ? 'Selecciona o crea el cliente.' : delivery == null ? 'Revisa el costo de entrega.' : editor.validate();
-    if (problem) { error.textContent = problem; error.hidden = false; return; }
-    const button = event.submitter; saving = true; modal.setDismissible(false); setButtonLoading(button, true, 'Registrando…');
+    if (!data.get('customer_id')) { showError('Selecciona o crea el cliente.', form.querySelector('[data-customer-search]')); return; }
+    const lineProblem = editor.validate();
+    if (lineProblem) { showError(lineProblem, form.querySelector('[data-line-search]')); return; }
+    if (delivery == null) { showError('Revisa el costo de entrega.', el('delivery_cost')); return; }
+    const shipping = addressProblem();
+    if (shipping) { showError(shipping, needs().city && !String(el('city').value).trim() ? el('city') : el('address')); return; }
+    const button = event.submitter || form.querySelector('[type="submit"]'); saving = true; modal.setDismissible(false); setButtonLoading(button, true, 'Registrando…');
+    const used = addressUsed();
     try {
-      const order = await createAdminOrder({ customer_id: data.get('customer_id'), source: data.get('source'), delivery_method_id: data.get('delivery_method_id'), payment_method_id: data.get('payment_method_id'), delivery_cost: delivery, city: data.get('city'), address: data.get('address'), notes: data.get('notes'), items: editor.items(), request_key: requestKey });
+      const order = await createAdminOrder({ customer_id: data.get('customer_id'), source: data.get('source'), delivery_method_id: data.get('delivery_method_id'), payment_method_id: data.get('payment_method_id'), delivery_cost: delivery, city: used ? data.get('city') : '', address: used ? data.get('address') : '', notes: data.get('notes'), items: editor.items(), request_key: requestKey });
       toast(`Pedido ${order.order_number} registrado`); modal.close(true); await refresh();
-    } catch (saveError) { error.textContent = requestError(saveError, 'No pudimos registrar el pedido.'); error.hidden = false; saving = false; modal.setDismissible(true); setButtonLoading(button, false); }
+    } catch (saveError) { saving = false; modal.setDismissible(true); setButtonLoading(button, false); showError(requestError(saveError, 'No pudimos registrar el pedido.')); }
   });
 }
 
@@ -1432,7 +1840,9 @@ async function sendQuoteWhatsapp(quote, refresh, trigger) {
 }
 
 async function openQuoteForm(quote, refresh, trigger = null) {
-  const [customers, config] = await Promise.all([getCustomers(), settings()]);
+  const loaded = await withLoading(() => Promise.all([getCustomers(), settings()]), { title: quote ? `Abriendo ${quote.quote_number}` : 'Preparando nueva cotización', steps: ['Cargando clientes…', 'Cargando condiciones comerciales…', 'Preparando el catálogo de productos…'], trigger });
+  if (!loaded) return;
+  const [customers, config] = loaded;
   const configuredDays = configuredValidityDays(config.quote_terms); const today = bogotaTodayIso();
   const validUntil = quote?.valid_until || (!quote && configuredDays ? addIsoDays(today, configuredDays) : '');
   const initialTerms = quote ? (quote.terms_snapshot ?? '') : (config.quote_terms || '');
@@ -1638,7 +2048,8 @@ function bindSaleCard(card, sale, config, refresh) {
 }
 
 async function openSaleDetail(sale, refresh, trigger, { fromProfile = false } = {}) {
-  const config = await settings();
+  const config = await withLoading(settings, { title: `Abriendo ${sale.sale_number || 'la venta'}`, steps: ['Cargando los datos del comprobante…'], trigger });
+  if (!config) return;
   const returned = returnedBySaleItem(sale);
   const items = docItems('sale', sale);
   const snapshot = sale.customer_snapshot || {}; const customer = sale.customers || {};
@@ -1695,7 +2106,9 @@ function saleActionModal({ sale, title, iconName, tone = 'primary', body, note =
 }
 
 async function openPaidForm(sale, refresh, trigger) {
-  const methods = (await getPaymentMethods({ all: true }).catch(() => [])).filter(method => method.active || method.name === sale.payment_method);
+  const loaded = await withLoading(() => getPaymentMethods({ all: true }).catch(() => []), { title: 'Preparando registro de pago', steps: ['Cargando métodos de pago…'], trigger });
+  if (!loaded) return;
+  const methods = loaded.filter(method => method.active || method.name === sale.payment_method);
   const current = sale.payment_method || ''; const known = methods.some(method => method.name === current);
   const useOther = (current && !known) || !methods.length;
   const short = text => { const clean = String(text || '').replace(/\s+/g, ' ').trim(); return clean.length > 64 ? `${clean.slice(0, 62)}…` : clean; };
@@ -1804,33 +2217,119 @@ function openReturnForm(sale, refresh, trigger) {
   form.querySelectorAll('.return-pick input').forEach(input => input.addEventListener('input', update));
 }
 
+const SALE_SOURCES = [['presencial', 'Presencial', 'En el local', 'store'], ['WhatsApp', 'WhatsApp', 'Por chat', 'whatsapp'], ['manual', 'Manual', 'Otro canal', 'pencil']];
+
 async function openManualSaleForm(refresh, trigger = null) {
-  const [customers, names] = await Promise.all([getCustomers(), paymentOptions()]);
+  const loaded = await withLoading(() => Promise.all([getCustomers(), paymentOptions()]), { title: 'Preparando venta manual', steps: ['Cargando clientes…', 'Cargando métodos de pago…', 'Preparando el catálogo de productos…'], trigger });
+  if (!loaded) return;
+  const [customers, names] = loaded;
+  const quickPayments = [...new Set(names.map(name => name.trim()).filter(Boolean))].slice(0, 6);
+  const stockById = new Map(variantCatalog().map(entry => [entry.id, entry]));
   const form = document.createElement('form');
-  form.className = 'admin-form';
-  form.innerHTML = `<p class="form-help">Para compras cerradas por WhatsApp o en persona. Se crea como solicitud; el inventario se descuenta solo al confirmar.</p><div class="form-grid">${customerPickerMarkup(customers)}<label>Origen<select name="source"><option value="presencial">Presencial</option><option value="WhatsApp">WhatsApp</option><option value="manual">Manual</option></select></label><label>Método de pago <small>Declarado</small><input name="payment_method" list="manual-payment-options" maxlength="80"><datalist id="manual-payment-options">${names.map(name => `<option value="${escapeHtml(name)}">`).join('')}</datalist></label>${lineEditorMarkup()}<label>Costo de entrega (COP)<input name="delivery_cost" data-money type="text" inputmode="decimal" value="0"></label><label class="check-field"><input name="confirm_now" type="checkbox"> Confirmar y descontar inventario al guardar</label><label class="form-grid__full">Observaciones<textarea name="notes" rows="2"></textarea></label></div><p class="product-form-error" data-error role="alert" hidden></p><div class="form-actions"><button class="btn btn--primary" type="submit">Registrar venta</button></div>`;
-  const editor = mountLineEditor(form, { customPrice: true, discount: true, deliveryInput: form.elements.delivery_cost });
+  form.className = 'admin-form flow-form';
+  form.noValidate = true;
+  const step = (number, key, title, hint, body, extra = '') => `<section class="flow-step" data-step="${key}"><header class="flow-step__head"><span class="flow-step__num" aria-hidden="true"><b>${number}</b>${icon('check', { size: 15 })}</span><div><h3>${title}</h3><p>${hint}</p></div>${extra}</header>${body}</section>`;
+  form.innerHTML = `<div class="flow-form__body form-grid">
+    <div class="flow-form__main">
+      ${step(1, 'customer', 'Cliente', 'Busca por nombre, teléfono o documento, o créalo en un clic.', customerPickerMarkup(customers), '<span class="flow-step__state" data-state="customer">Pendiente</span>')}
+      ${step(2, 'lines', 'Productos', 'Busca por nombre o referencia; luego ajusta cantidad, precio y descuento.<span class="flow-hint-keys"> · ↑ ↓ y Enter para agregar rápido</span>', lineEditorMarkup(), '<span class="flow-step__state" data-state="lines">Pendiente</span>')}
+    </div>
+    <aside class="flow-form__aside">
+      ${step(3, 'details', 'Cobro y entrega', 'Cómo se cerró la venta y cómo pagó el cliente.', `
+        <fieldset class="flow-choice"><legend>Origen de la venta</legend><div class="flow-choice__grid">${SALE_SOURCES.map(([value, label, hint, iconName], index) => `<label class="flow-choice__opt"><input type="radio" name="source" value="${value}" ${index === 0 ? 'checked' : ''}><span class="flow-choice__card">${icon(iconName, { size: 20 })}<strong>${label}</strong><small>${hint}</small></span></label>`).join('')}</div></fieldset>
+        <div class="flow-pay"><label for="flow-payment-method">Método de pago <small>Declarado por el cliente</small></label>${quickPayments.length ? `<div class="flow-pay__chips" role="group" aria-label="Métodos de pago frecuentes">${quickPayments.map(name => `<button type="button" class="flow-chip" data-pay="${escapeHtml(name)}" aria-pressed="false">${escapeHtml(name)}</button>`).join('')}</div>` : ''}<input id="flow-payment-method" name="payment_method" list="manual-payment-options" maxlength="80" placeholder="${quickPayments.length ? 'U otro: escribe el método' : 'Ej. Efectivo, transferencia…'}" autocomplete="off"><datalist id="manual-payment-options">${names.map(name => `<option value="${escapeHtml(name)}">`).join('')}</datalist></div>
+        <label class="flow-money">Costo de entrega <small>COP · 0 si retira en tienda</small><span class="flow-money__field"><b aria-hidden="true">$</b><input name="delivery_cost" data-money type="text" inputmode="decimal" value="0"></span></label>
+        <details class="flow-notes"><summary>${icon('pencil', { size: 16 })}<span>Observaciones</span><small data-notes-state>Opcional</small>${icon('chevronDown', { size: 16 })}</summary><label class="flow-notes__body"><span class="sr-only">Observaciones</span><textarea name="notes" rows="3" maxlength="1000" placeholder="Ej. entrega el sábado, pagó la mitad por adelantado…"></textarea></label></details>`)}
+      <label class="flow-switch"><input name="confirm_now" type="checkbox" role="switch"><span class="flow-switch__switch" aria-hidden="true"></span><span class="flow-switch__text"><strong>Confirmar y descontar inventario</strong><small>Actívalo si el cliente ya pagó o se llevó el producto. Si no, la venta queda como solicitud para confirmar después.</small></span></label>
+      <div class="flow-switch__warn" data-stock-warning role="status" hidden></div>
+      <section class="flow-summary" aria-label="Resumen de la venta">
+        <header><span>Resumen</span><b data-sum-units>Sin productos</b></header>
+        <dl><div><dt>Subtotal</dt><dd data-sum-gross>${formatMoney(0)}</dd></div><div data-sum-discount-row hidden><dt>Descuentos</dt><dd data-sum-discount></dd></div><div><dt>Entrega</dt><dd data-sum-delivery>${formatMoney(0)}</dd></div></dl>
+        <div class="flow-summary__total"><span>Total</span><strong data-sum-total>${formatMoney(0)}</strong></div>
+        <p class="flow-summary__mode" data-sum-mode></p>
+      </section>
+    </aside>
+  </div>
+  <div class="flow-form__footer">
+    <p class="product-form-error flow-form__error" data-error role="alert" tabindex="-1" hidden></p>
+    <ul class="flow-form__ready" aria-label="Datos requeridos"><li data-ready="customer">${icon('check', { size: 13 })}Cliente</li><li data-ready="lines">${icon('check', { size: 13 })}Productos</li></ul>
+    <div class="flow-form__total"><small>Total a registrar</small><strong data-footer-total>${formatMoney(0)}</strong></div>
+    <div class="flow-form__actions"><button class="btn btn--ghost" data-cancel type="button">Cancelar</button><button class="btn btn--primary" type="submit">Registrar venta</button></div>
+  </div>`;
+  const submit = form.querySelector('[type="submit"]'); const payment = form.elements.payment_method; const confirmNow = form.elements.confirm_now;
+  // Avisa antes de confirmar si alguna variante no tiene unidades suficientes (el servidor lo valida igual).
+  const stockShortages = () => {
+    const wanted = new Map();
+    editor?.items().forEach(item => wanted.set(item.variant_id, (wanted.get(item.variant_id) || 0) + item.quantity));
+    return [...wanted].map(([id, quantity]) => ({ entry: stockById.get(id), quantity })).filter(({ entry, quantity }) => entry && quantity > entry.stock);
+  };
+  const sync = (totals = null) => {
+    if (totals) {
+      form.querySelector('[data-sum-gross]').textContent = formatMoney(totals.gross);
+      form.querySelector('[data-sum-discount-row]').hidden = !totals.discount;
+      form.querySelector('[data-sum-discount]').textContent = `− ${formatMoney(totals.discount)}`;
+      form.querySelector('[data-sum-delivery]').textContent = totals.delivery ? formatMoney(totals.delivery) : 'Sin costo';
+      form.querySelector('[data-sum-total]').textContent = formatMoney(totals.total);
+      form.querySelector('[data-footer-total]').textContent = formatMoney(totals.total);
+    }
+    const items = editor?.items() || []; const units = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    form.querySelector('[data-sum-units]').textContent = items.length ? `${plural(items.length, 'producto', 'productos')} · ${plural(units, 'unidad', 'unidades')}` : 'Sin productos';
+    const ready = { customer: Boolean(form.elements.customer_id.value), lines: items.length > 0 };
+    Object.entries(ready).forEach(([key, done]) => {
+      form.querySelector(`[data-step="${key}"]`).classList.toggle('is-done', done);
+      const state = form.querySelector(`[data-state="${key}"]`); state.textContent = done ? (key === 'lines' ? plural(items.length, 'producto', 'productos') : 'Listo') : 'Pendiente';
+      form.querySelector(`[data-ready="${key}"]`).classList.toggle('is-done', done);
+    });
+    form.querySelector('[data-step="details"]').classList.toggle('is-done', ready.customer && ready.lines);
+    const confirming = confirmNow.checked; const short = confirming ? stockShortages() : [];
+    submit.textContent = confirming ? 'Registrar y confirmar' : 'Registrar venta';
+    form.querySelector('[data-sum-mode]').innerHTML = confirming ? `${icon('checkCircle', { size: 15 })}<span>Quedará <b>confirmada</b> y el inventario se descontará al guardar.</span>` : `${icon('clock', { size: 15 })}<span>Quedará como <b>solicitud</b>; el inventario no cambia hasta confirmarla.</span>`;
+    const warning = form.querySelector('[data-stock-warning]'); warning.hidden = !short.length;
+    warning.innerHTML = short.length ? `${icon('alert', { size: 16 })}<div><strong>Stock insuficiente para confirmar</strong><ul>${short.map(({ entry, quantity }) => `<li>${escapeHtml(entry.label)}: pides ${quantity}, hay ${entry.stock}</li>`).join('')}</ul><small>Puedes registrarla como solicitud y confirmarla cuando llegue el inventario.</small></div>` : '';
+  };
+  let editor = null;
+  editor = mountLineEditor(form, { customPrice: true, discount: true, deliveryInput: form.elements.delivery_cost, onChange: totals => sync(totals) });
   bindCustomerPicker(form, customers);
+  editor.total();
+  form.elements.customer_id.addEventListener('change', () => sync());
+  confirmNow.addEventListener('change', () => sync());
+  const syncChips = () => form.querySelectorAll('[data-pay]').forEach(chip => chip.setAttribute('aria-pressed', String(normalizeText(chip.dataset.pay) === normalizeText(payment.value))));
+  form.querySelector('.flow-pay__chips')?.addEventListener('click', event => {
+    const chip = event.target.closest('[data-pay]'); if (!chip) return;
+    payment.value = chip.getAttribute('aria-pressed') === 'true' ? '' : chip.dataset.pay; syncChips();
+  });
+  payment.addEventListener('input', syncChips);
+  form.elements.notes.addEventListener('input', () => { form.querySelector('[data-notes-state]').textContent = form.elements.notes.value.trim() ? 'Con información' : 'Opcional'; });
   const guard = guardUnsaved(() => JSON.stringify(Object.fromEntries(new FormData(form))) + editor.signature());
-  const modal = openModal({ title: 'Venta manual', content: form, trigger, className: 'modal--wide', closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  const modal = openModal({ title: 'Venta manual', description: 'Registra una compra cerrada por WhatsApp o en persona.', headerIcon: icon('wallet', { size: 22 }), content: form, trigger, className: 'modal--wide modal--flow', initialFocus: '[data-customer-search]', closeOnBackdrop: false, beforeClose: guard.beforeClose });
+  form.querySelector('[data-cancel]').addEventListener('click', () => modal.close());
   let createdSale = null;
   let saving = false;
+  const showError = (message, target = null) => {
+    const error = form.querySelector('[data-error]'); error.textContent = message; error.hidden = false; error.dataset.kind = target ? 'validation' : 'save';
+    (target || error).focus({ preventScroll: !target }); target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  // Un aviso de validación se retira en cuanto el usuario corrige algo; los errores del servidor se quedan.
+  const clearValidation = () => { const error = form.querySelector('[data-error]'); if (error.dataset.kind === 'validation') error.hidden = true; };
+  form.addEventListener('input', clearValidation); form.addEventListener('change', clearValidation);
+  form.addEventListener('click', event => { if (event.target.closest('[data-line-option],[data-customer-option],[data-remove-line]')) clearValidation(); });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (saving) return;
-    const error = form.querySelector('[data-error]'); const data = new FormData(form);
+    form.querySelector('[data-error]').hidden = true; const data = new FormData(form);
     const delivery = parseMoneyInput(data.get('delivery_cost'));
-    const problem = !data.get('customer_id') ? 'Selecciona o crea el cliente.' : delivery == null ? 'Revisa el costo de entrega.' : editor.validate();
-    if (problem) { error.textContent = problem; error.hidden = false; return; }
-    const button = event.submitter; saving = true; modal.setDismissible(false); setButtonLoading(button, true, 'Registrando…');
+    if (!data.get('customer_id')) { showError('Selecciona o crea el cliente.', form.querySelector('[data-customer-search]')); return; }
+    const problem = delivery == null ? 'Revisa el costo de entrega.' : editor.validate();
+    if (problem) { showError(problem, delivery == null ? form.elements.delivery_cost : form.querySelector('[data-line-search]')); return; }
+    const button = event.submitter || submit; saving = true; modal.setDismissible(false); setButtonLoading(button, true, 'Registrando…');
     try {
       // Si la confirmación falla, un segundo clic no vuelve a crear la venta.
       createdSale ||= await createManualSale({ customer_id: data.get('customer_id'), source: data.get('source'), payment_method: data.get('payment_method'), delivery_cost: delivery, notes: data.get('notes'), items: editor.items() });
       if (data.has('confirm_now')) { await confirmSale(createdSale.id); await ctx.refreshProducts(); }
       toast(`Venta ${createdSale.sale_number} registrada${data.has('confirm_now') ? ' y confirmada' : ''}`); modal.close(true); await refresh();
     } catch (saveError) {
-      error.textContent = createdSale ? `La venta ${createdSale.sale_number} quedó registrada como solicitud, pero no se pudo confirmar: ${requestError(saveError, 'revisa el stock.')}` : requestError(saveError, 'No pudimos registrar la venta.');
-      error.hidden = false; saving = false; modal.setDismissible(true); setButtonLoading(button, false);
+      saving = false; modal.setDismissible(true); setButtonLoading(button, false);
+      showError(createdSale ? `La venta ${createdSale.sale_number} quedó registrada como solicitud, pero no se pudo confirmar: ${requestError(saveError, 'revisa el stock.')}` : requestError(saveError, 'No pudimos registrar la venta.'));
     }
   });
 }

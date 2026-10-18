@@ -35,9 +35,9 @@ async function inspectWithRest(signal) {
   return { ready: false, reason: 'network', status: response.status };
 }
 
-async function inspectBackend() {
+async function inspectBackend(timeoutMilliseconds) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
   try {
     return (await inspectWithGraphql(controller.signal).catch(() => null)) || await inspectWithRest(controller.signal);
   } catch (error) {
@@ -47,7 +47,16 @@ async function inspectBackend() {
   }
 }
 
+// Con una conexión lenta, un único intento corto marcaba la tienda como no disponible
+// aunque la base respondiera: los fallos de red se reintentan una vez con más margen.
+// Los de configuración o esquema se informan de inmediato.
+async function inspectWithRetry() {
+  const first = await inspectBackend(10000);
+  if (first.ready || first.reason !== 'network') return first;
+  return inspectBackend(20000);
+}
+
 export function getBackendStatus({ refresh = false } = {}) {
-  if (refresh || !statusPromise) statusPromise = inspectBackend();
+  if (refresh || !statusPromise) statusPromise = inspectWithRetry();
   return statusPromise;
 }

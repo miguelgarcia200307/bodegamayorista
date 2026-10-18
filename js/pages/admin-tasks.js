@@ -4,6 +4,7 @@
 // WhatsApp no cuenta como envío. Completar, posponer o descartar no se duplica.
 import { confirmIdentityVerification, createManualTask, generateCustomerTasks, getDocumentById, getOpenTasks, getPendingVerifications, recordContactAttempt, setTaskStatus } from '../lib/api.js';
 import { openModal } from '../components/modal.js';
+import { withLoading } from '../components/loading-dialog.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
 import { $, debounce, escapeHtml, normalizeText, setButtonLoading } from '../lib/helpers.js';
@@ -79,10 +80,10 @@ export function bindTaskCards(root, tasks, refresh, customerOf = task => task.cu
     const closeMenu = () => card.querySelector('details[open]')?.removeAttribute('open');
     card.querySelector('[data-task-customer]')?.addEventListener('click', () => ctx.navigateTo('customer', { id: task.customer_id, tab: 'follow' }));
     card.querySelector('[data-task-doc]')?.addEventListener('click', async event => {
-      const button = event.currentTarget; setButtonLoading(button, true, 'Abriendo…');
-      try { const doc = await getDocumentById(task.source_type, task.source_id); closeMenu(); if (doc) openDocument(task.source_type, doc, refresh, button); else toast('El documento ya no existe.', 'error'); }
-      catch (error) { toast(requestError(error, 'No pudimos abrir el documento.'), 'error'); }
-      finally { setButtonLoading(button, false); }
+      const button = event.currentTarget; closeMenu();
+      const found = await withLoading(async () => ({ doc: await getDocumentById(task.source_type, task.source_id) }), { title: 'Abriendo el documento', steps: ['Buscando el documento relacionado…'], trigger: button, errorTitle: 'No pudimos abrir el documento' });
+      if (!found) return;
+      if (found.doc) openDocument(task.source_type, found.doc, refresh, button); else toast('El documento ya no existe.', 'error');
     });
     card.querySelector('[data-task-message]')?.addEventListener('click', event => openTaskMessage(task, customer, refresh, event.currentTarget));
     card.querySelector('[data-task-response]')?.addEventListener('click', event => { closeMenu(); openResponseForm(task, customer, refresh, event.currentTarget); });
@@ -110,7 +111,7 @@ function taskModal({ title, iconName, tone = 'primary', head = '', body, note = 
 }
 
 async function openTaskMessage(task, customer, refresh, trigger) {
-  await crmSettings();
+  if (!(await withLoading(crmSettings, { title: 'Preparando el mensaje', steps: ['Cargando la configuración del negocio…'], trigger }))) return;
   const digits = waDigits(customer);
   const purpose = task.promotional ? 'comercial' : task.kind === 'postventa' ? 'postventa' : task.kind === 'cumpleanos' ? 'cumpleanos' : 'servicio';
   const text = (MESSAGE[task.kind] || MESSAGE.default)(firstName(customer?.full_name));

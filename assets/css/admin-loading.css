@@ -1,0 +1,71 @@
+/* Estados de carga del panel:
+   - .loading-dialog: ventana que aparece mientras se consultan datos antes de abrir un formulario
+     (js/components/loading-dialog.js).
+   - .section-loading: esqueleto al cambiar de sección (sectionLoadingMarkup en admin.js). */
+
+/* --- Ventana de carga --------------------------------------------------------------- */
+.loading-dialog { position: fixed; z-index: 250; inset: 0; display: grid; place-items: center; padding: max(1rem,env(safe-area-inset-top)) max(1rem,env(safe-area-inset-right)) max(1rem,env(safe-area-inset-bottom)) max(1rem,env(safe-area-inset-left)); background: rgba(9,15,11,.42); backdrop-filter: blur(4px); animation: loading-fade-in .18s ease-out both; }
+.loading-dialog.is-closing { animation: loading-fade-out .16s ease-in both; }
+.loading-dialog__card { width: min(100%,360px); display: grid; justify-items: center; gap: .55rem; padding: 1.6rem 1.4rem 1.35rem; border: 1px solid rgba(23,32,25,.08); border-radius: 22px; color: var(--admin-text,#172019); background: radial-gradient(120% 70% at 50% 0%,#fff8e8,transparent 62%),#fff; box-shadow: 0 30px 80px rgba(8,20,12,.28); text-align: center; animation: loading-card-in .22s cubic-bezier(.2,.9,.3,1.2) both; }
+.loading-dialog__card:focus { outline: none; }
+.loading-dialog.is-closing .loading-dialog__card { animation: loading-card-out .16s ease-in both; }
+
+.loading-dialog__orbit { position: relative; width: 68px; height: 68px; display: grid; place-items: center; margin-bottom: .35rem; }
+.loading-dialog__ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg,rgba(212,176,104,0) 0deg,#d4b068 250deg,#a47b28 360deg); -webkit-mask: radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px)); mask: radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px)); animation: spin .9s linear infinite; }
+.loading-dialog__mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: #1d1a10; background: linear-gradient(140deg,#e6c784,#a47b28); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 16px rgba(164,123,40,.3); font: 800 1.05rem/1 "Barlow Condensed",sans-serif; letter-spacing: .02em; animation: loading-breathe 1.6s ease-in-out infinite; }
+.loading-dialog__title { font-size: 1rem; font-weight: 750; line-height: 1.3; }
+.loading-dialog__step { min-height: 1.4em; margin: 0; color: var(--admin-muted,#667069); font-size: .84rem; line-height: 1.45; }
+.loading-dialog__bar { position: relative; width: 100%; height: 4px; margin-top: .4rem; overflow: hidden; border-radius: 999px; background: #efe9dc; }
+.loading-dialog__bar span { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: linear-gradient(90deg,#d4b068,#a47b28); animation: loading-bar 1.25s cubic-bezier(.45,0,.25,1) infinite; }
+.loading-dialog__dots { display: flex; gap: .3rem; margin-top: .1rem; }
+.loading-dialog__dots i { width: 6px; height: 6px; border-radius: 50%; background: #e2dccd; transition: background .25s, transform .25s; }
+.loading-dialog__dots i.is-active { background: #a47b28; transform: scale(1.15); }
+.loading-dialog__slow { display: grid; justify-items: center; gap: .55rem; margin-top: .35rem; padding-top: .75rem; border-top: 1px dashed #e6e0d2; }
+.loading-dialog__slow[hidden] { display: none; }
+.loading-dialog__slow small { color: #8a5a10; font-size: .76rem; line-height: 1.4; }
+.loading-dialog__slow .btn { min-height: 40px; padding-inline: 1.1rem; }
+
+.loading-dialog__card.is-error { gap: .6rem; background: #fff; }
+.loading-dialog__error-icon { width: 56px; height: 56px; display: grid; place-items: center; margin-bottom: .2rem; border-radius: 50%; color: var(--admin-danger,#b62f35); background: #fdeeee; box-shadow: 0 0 0 6px #fff6f6; }
+.loading-dialog__actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .4rem; }
+.loading-dialog__actions .btn { min-height: 44px; }
+
+@keyframes loading-fade-in { from { opacity: 0; } }
+@keyframes loading-fade-out { to { opacity: 0; } }
+@keyframes loading-card-in { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+@keyframes loading-card-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes loading-bar { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@keyframes loading-breathe { 50% { transform: scale(.94); } }
+
+@media (max-width: 480px) {
+  .loading-dialog { place-items: end center; }
+  .loading-dialog__card { width: 100%; padding: 1.4rem 1.1rem calc(1.2rem + env(safe-area-inset-bottom)); border-radius: 22px 22px 18px 18px; }
+}
+
+/* --- Carga de sección --------------------------------------------------------------- */
+.section-loading { position: relative; display: grid; gap: 1rem; padding-top: .25rem; }
+.section-loading__badge { position: sticky; z-index: 2; top: calc(var(--admin-header-height,62px) + .6rem); justify-self: center; display: inline-flex; gap: .55rem; align-items: center; padding: .5rem .95rem .5rem .6rem; border: 1px solid #e4d1a6; border-radius: 999px; color: #5c4313; background: rgba(255,250,240,.96); box-shadow: 0 10px 28px rgba(17,32,22,.1); font-size: .82rem; font-weight: 700; animation: loading-card-in .2s ease-out both; }
+.section-loading__spinner { width: 18px; height: 18px; border: 2px solid #ead9b3; border-top-color: #a47b28; border-radius: 50%; animation: spin .7s linear infinite; }
+.section-loading__skeleton { display: grid; gap: .8rem; }
+.section-loading .sl-eyebrow { width: 110px; height: 12px; border-radius: 6px; }
+.section-loading .sl-title { width: min(70%,420px); height: 46px; }
+.section-loading .sl-text { width: min(90%,560px); height: 16px; }
+.section-loading .sl-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .7rem; margin-top: .4rem; }
+.section-loading .sl-kpi { height: 92px; border-radius: 16px; }
+.section-loading .sl-toolbar { height: 54px; margin-top: .2rem; border-radius: 14px; }
+.section-loading .sl-rows { display: grid; gap: .55rem; }
+.section-loading .sl-row { height: 74px; border-radius: 14px; }
+.section-loading .sl-row:nth-child(2) { opacity: .85; }
+.section-loading .sl-row:nth-child(3) { opacity: .7; }
+.section-loading .sl-row:nth-child(4) { opacity: .55; }
+.section-loading .sl-row:nth-child(5) { opacity: .4; }
+@media (min-width: 900px) {
+  .section-loading__badge { top: 1rem; }
+  .section-loading .sl-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-dialog,.loading-dialog__card,.loading-dialog__mark,.section-loading__badge { animation: none !important; }
+  .loading-dialog__ring,.section-loading__spinner { animation-duration: 2.4s; }
+  .loading-dialog__bar span { animation: none; width: 100%; opacity: .5; }
+}

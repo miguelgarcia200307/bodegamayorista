@@ -4,6 +4,7 @@ import { configureAnalysis, renderCustomerAnalysis } from './admin-analysis.js';
 import { configureTasks, renderToday } from './admin-tasks.js';
 import { configureCoupons, renderCoupons } from './admin-coupons.js';
 import { configureCatalogTools, renderCosts, renderRelationships } from './admin-catalog-tools.js';
+import { setCurrentNavSection, setNavBadge, setNavUser, setupAdminNav, syncNavGroups } from './admin-nav.js';
 import { getMaintenanceRuns, getPlanStatus, purgeBehaviorData } from '../lib/api.js';
 import { mountBannerEditor } from '../components/banner-editor.js';
 import { chooseAction, confirmAction, openModal } from '../components/modal.js';
@@ -39,6 +40,7 @@ export async function initAdmin(){
   staffRole=admin.role||'propietario';
   const allowed=ROLE_SECTIONS[staffRole];
   if(allowed)$$('#admin-nav [data-section]').forEach(button=>{button.hidden=!allowed.includes(button.dataset.section);});
+  syncNavGroups();setNavUser({email:session.user.email,role:staffRole});
   adminSession=session;
   $('#logout-button').addEventListener('click',async()=>{await supabase.auth.signOut();location.replace('login.html');});
   setupDrawer();setupActionMenus();
@@ -57,10 +59,11 @@ function setupActionMenus(){
 
 function setupDrawer(){
   const sidebar=$('#admin-sidebar');const backdrop=$('#admin-sidebar-backdrop');const menu=$('#admin-menu');const close=$('#admin-menu-close');
-  menu.addEventListener('click',()=>{sidebar.classList.add('open');backdrop.hidden=false;requestAnimationFrame(()=>backdrop.classList.add('visible'));document.body.classList.add('no-scroll');menu.setAttribute('aria-expanded','true');close.focus();});
+  const openDrawer=()=>{sidebar.classList.add('open');backdrop.hidden=false;requestAnimationFrame(()=>backdrop.classList.add('visible'));document.body.classList.add('no-scroll');menu.setAttribute('aria-expanded','true');close.focus();};
+  menu.addEventListener('click',openDrawer);setupAdminNav({openDrawer});
   close.addEventListener('click',closeDrawer);backdrop.addEventListener('click',closeDrawer);
   matchMedia('(min-width: 900px)').addEventListener('change',event=>{if(event.matches)closeDrawer();});
-  document.addEventListener('keydown',event=>{if(!sidebar.classList.contains('open'))return;if(event.key==='Escape'){event.preventDefault();closeDrawer();return;}if(event.key!=='Tab')return;const focusable=[...sidebar.querySelectorAll('a[href],button:not([disabled])')];const first=focusable[0];const last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
+  document.addEventListener('keydown',event=>{if(!sidebar.classList.contains('open'))return;if(event.key==='Escape'){event.preventDefault();closeDrawer();return;}if(event.key!=='Tab')return;const focusable=[...sidebar.querySelectorAll('a[href],button:not([disabled]),input')].filter(element=>element.offsetParent!==null);const first=focusable[0];const last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
 }
 
 function closeDrawer(){
@@ -73,14 +76,16 @@ function navigateTo(section,params={}){
   history.pushState({},'',`${location.pathname}?${query}`);loadSection(section);window.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
 
-async function refreshData(){[products,categories,brands]=await Promise.all([getAdminProducts(),getCategories({all:true}),getBrands({all:true})]);}
+async function refreshData(){[products,categories,brands]=await Promise.all([getAdminProducts(),getCategories({all:true}),getBrands({all:true})]);updateStockBadge();}
+
+function updateStockBadge(){const low=products.filter(product=>product.active!==false&&isProductLow(product)).length;setNavBadge('stock',low,`${low} ${low===1?'producto agotado o con pocas unidades':'productos agotados o con pocas unidades'}`);}
 
 async function loadSection(section){
   if(!['dashboard','today','orders','customers','customer','quotes','sales','coupons','products','stock','categories','brands','promotions','relationships','costs','settings'].includes(section))section='dashboard';
   const allowedSections=ROLE_SECTIONS[staffRole];if(allowedSections&&!allowedSections.includes(section))section=allowedSections[0];
   activeSectionCleanup();activeSectionCleanup=()=>{};
-  activeSection=section;$$('#admin-nav button').forEach(button=>button.classList.toggle('active',button.dataset.section===(section==='customer'?'customers':section)));
-  const root=$('#admin-content');root.innerHTML=['categories','brands'].includes(section)?entityLoadingMarkup():'<div class="admin-loading"><span class="spinner"></span> Cargando…</div>';
+  activeSection=section;setCurrentNavSection(section);
+  const root=$('#admin-content');root.innerHTML=['categories','brands'].includes(section)?entityLoadingMarkup():sectionLoadingMarkup(section);
   const loaders={dashboard:renderDashboard,today:renderToday,customer:renderCustomerAnalysis,coupons:renderCoupons,relationships:renderRelationships,costs:renderCosts,orders:renderOrders,customers:renderCustomers,quotes:renderQuotes,sales:renderSales,products:renderProducts,stock:renderStock,categories:()=>renderEntities('categories'),brands:()=>renderEntities('brands'),promotions:renderPromotions,settings:renderSettings};
   try{await loaders[section]?.();}catch(error){console.error(error);root.innerHTML='<div class="empty-state"><h1>No pudimos cargar esta sección</h1><p>Intenta nuevamente.</p></div>';}
 }
@@ -418,6 +423,9 @@ function bindStockControls(variants){
 }
 
 function refreshStockGroupSummary(row,product){const copy=row.closest('.stock-product')?.querySelector('.stock-product__copy');if(!copy)return;copy.querySelector('small').textContent=`${product.product_variants.length} variantes · ${totalStock(product)} unidades`;const statuses=product.product_variants.map(variant=>stockStatus(variant.stock,product).className);const sold=statuses.filter(status=>status==='sold').length;const low=statuses.filter(status=>status==='low').length;let alerts=copy.querySelector('.stock-product__alerts');if(!sold&&!low){alerts?.remove();return;}if(!alerts){alerts=document.createElement('span');alerts.className='stock-product__alerts';copy.append(alerts);}alerts.innerHTML=`${sold?`<span class="sold">${sold} agotada${sold===1?'':'s'}</span>`:''}${low?`<span>${low} con stock bajo</span>`:''}`;}
+
+// Carga de sección: esqueleto con la forma habitual de una página del panel y el nombre de la sección.
+function sectionLoadingMarkup(section){const label=$(`#admin-nav [data-section="${section==='customer'?'customers':section}"]`)?.dataset.tip||'la sección';const block=(className,count=1)=>`<span class="skeleton-block ${className}"></span>`.repeat(count);return `<section class="section-loading" role="status" aria-live="polite" aria-busy="true"><span class="section-loading__badge"><span class="section-loading__spinner" aria-hidden="true"></span>Cargando ${escapeHtml(section==='customer'?'ficha del cliente':label)}…</span><div class="section-loading__skeleton" aria-hidden="true">${block('sl-eyebrow')}${block('sl-title')}${block('sl-text')}<div class="sl-grid">${block('sl-kpi',4)}</div>${block('sl-toolbar')}<div class="sl-rows">${block('sl-row',5)}</div></div></section>`;}
 
 function entityLoadingMarkup(){return `<section class="admin-skeleton" aria-label="Cargando registros" aria-busy="true"><span class="skeleton-block skeleton-block--title"></span><span class="skeleton-block skeleton-block--search"></span>${Array.from({length:5},()=>'<span class="skeleton-block skeleton-block--row"></span>').join('')}</section>`;}
 

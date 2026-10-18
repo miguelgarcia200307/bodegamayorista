@@ -1,4 +1,6 @@
-import { getBrands, getCategories, getEntityBySlug, getFilterOptions, getHomepageBanners, getProducts, getProductsByIds, getWholesaleProductIds, searchProducts } from '../lib/api.js';
+import { getBrands, getCategories, getEntityBySlug, getFilterOptions, getHomepageBanners, getProducts, getProductsByIds, getTrendingProducts, getWholesaleProductIds, searchProducts } from '../lib/api.js';
+import { recommendForHome } from '../lib/public-reco.js';
+import { getConsent, localPersonalizationAllowed, observeImpressions } from '../lib/privacy.js';
 import { createHomeBanner } from '../lib/home-banner.js';
 import { loadSettings } from '../components/layout.js';
 import { getSiteData, whatsappLink } from '../site-config.js';
@@ -50,9 +52,26 @@ export async function initHome() {
   const newestProducts = newest.products.filter(product => isAvailable(product) && !featuredIds.has(product.id)).slice(0, 8);
   renderProductSection($('#home-new'), { eyebrow: 'Acaban de llegar', title: 'Novedades', products: newestProducts, seeAllUrl: 'catalogo.html?sort=newest' });
 
+  renderForYou().catch(error => console.warn('Sección personalizada no disponible:', error));
   renderSocialProof(site);
   renderInstitutional(site);
   await initHomeResults({ categories });
+}
+
+// Inicio: continuidad solo con personalización autorizada (vistos en este navegador);
+// si no, tendencias agregadas de la tienda (≥ 3 compradores) o nada.
+async function renderForYou() {
+  const recentIds = localPersonalizationAllowed() ? (JSON.parse(localStorage.getItem('bodega_mayorista_fc_recent_products_v1') || '[]') || []).filter(id => typeof id === 'string').slice(0, 8) : [];
+  const trendingIds = recentIds.length ? [] : (await getTrendingProducts(30, 8)).map(row => row.product_id);
+  const ids = [...new Set([...recentIds, ...trendingIds])];
+  if (!ids.length) return;
+  const products = await getProductsByIds(ids);
+  const block = recommendForHome({ products, recentIds, personalization: recentIds.length > 0 && (getConsent().personalization || localPersonalizationAllowed()), trendingIds });
+  if (block.kind === 'destacados' || !block.items.length) return;
+  const root = $('#home-for-you');
+  if (!renderProductSection(root, { eyebrow: block.kind === 'continuidad' ? 'Para ti' : 'En tendencia', title: block.title, products: block.items.map(item => item.product), seeAllUrl: '', layout: 'rail' })) return;
+  root.querySelectorAll('.product-card').forEach((card, position) => { card.dataset.recoProduct = block.items[position]?.product.id || ''; card.dataset.recoPosition = String(position + 1); });
+  observeImpressions(root, 'inicio');
 }
 
 function renderCategoryRail(categories) {

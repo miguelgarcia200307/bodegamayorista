@@ -7,6 +7,8 @@ import { escapeHtml, getCategoryUrl, localAsset } from '../lib/helpers.js';
 import { createAnnouncementController } from '../lib/announcement.js';
 import { icon } from './icons.js';
 import { bindSearch, searchBox } from './search.js';
+import { openPrivacyPreferences, renderPrivacyBanner } from './privacy-banner.js';
+import { captureCampaign, configurePrivacy, getConsent } from '../lib/privacy.js';
 
 // Compatibilidad: checkout y otras páginas siguen importando loadSettings desde aquí.
 export const loadSettings = loadSiteSettings;
@@ -64,7 +66,8 @@ function footerMarkup(site) {
     site.schedule ? `<p class="footer__detail">${icon('clock')}<span>${escapeHtml(site.schedule)}</span></p>` : '',
     site.mapsUrl ? `<a class="btn btn--secondary btn--sm footer__maps" href="${escapeHtml(site.mapsUrl)}" target="_blank" rel="noopener">${icon('navigation', { size: 18 })}<span>Cómo llegar</span></a>` : ''
   ].filter(Boolean);
-  const help = site.helpTopics.map(topic => `<a href="ayuda.html#${topic.slug}">${escapeHtml(topic.title)}</a>`);
+  // Ayuda y privacidad siempre enlazadas (ayuda.html existe aunque falten textos).
+  const help = [...site.helpTopics.filter(topic => topic.slug !== 'privacidad').map(topic => `<a href="ayuda.html#${topic.slug}">${escapeHtml(topic.title)}</a>`), '<a href="ayuda.html#privacidad">Privacidad y datos personales</a>', '<button class="footer__link-button" type="button" data-privacy-preferences>Preferencias de privacidad</button>'];
   const legal = [site.legalName, site.taxId ? `NIT ${site.taxId}` : ''].filter(Boolean).join(' · ');
   return `<footer class="site-footer" data-site-footer>
     <div class="container footer__grid">
@@ -74,7 +77,7 @@ function footerMarkup(site) {
       </section>
       ${contact.length ? `<section class="footer__col" aria-labelledby="footer-contact"><h2 id="footer-contact">Hablemos</h2><div class="footer__stack">${contact.join('')}</div></section>` : ''}
       <nav class="footer__col" aria-labelledby="footer-explore"><h2 id="footer-explore">Explora</h2><div class="footer__links"><a href="catalogo.html">Todos los productos</a><a href="categorias.html">Categorías</a><a href="promociones.html">Ofertas</a><a href="catalogo.html?sort=newest">Novedades</a><a href="favoritos.html">Mis favoritos</a></div></nav>
-      ${help.length ? `<nav class="footer__col" aria-labelledby="footer-help"><h2 id="footer-help">Ayuda</h2><div class="footer__links">${help.join('')}</div></nav>` : ''}
+      <nav class="footer__col" aria-labelledby="footer-help"><h2 id="footer-help"><a href="ayuda.html">Ayuda</a></h2><div class="footer__links">${help.join('')}</div></nav>
       ${visit.length ? `<section class="footer__col" aria-labelledby="footer-visit"><h2 id="footer-visit">Visítanos</h2><div class="footer__stack">${visit.join('')}</div></section>` : ''}
     </div>
     ${site.payments.length ? `<div class="container footer__payments"><span>Medios de pago</span><ul>${site.payments.map(method => `<li>${method.logo ? `<img src="${escapeHtml(localAsset(method.logo))}" alt="${escapeHtml(method.name)}" width="48" height="24" loading="lazy">` : escapeHtml(method.name)}</li>`).join('')}</ul></div>` : ''}
@@ -176,6 +179,10 @@ export async function renderLayout() {
   const mobileRoot = document.querySelector('#mobile-nav');
   if (mobileRoot) mobileRoot.innerHTML = mobileNavMarkup();
 
+  configurePrivacy(site.raw);
+  renderPrivacyBanner();
+  if (getConsent().analytics) captureCampaign();
+  document.querySelectorAll('[data-privacy-preferences]').forEach(button => button.addEventListener('click', event => openPrivacyPreferences(event.currentTarget)));
   bindSearch();
   bindSearchToggle();
   bindScrollBehavior();

@@ -1,0 +1,37 @@
+### marketing_consent_text
+Autorizo de forma libre, previa, expresa e informada a {{responsable}} para enviarme ofertas, promociones, novedades, códigos de descuento y saludos de cumpleaños por WhatsApp, llamada, mensaje de texto o correo electrónico, y para usar mi historial de compras con el fin de que sean pertinentes. Esta autorización es opcional, no condiciona mi compra y puedo retirarla en cualquier momento escribiendo al WhatsApp {{whatsapp}}.
+
+### analytics_consent_text
+Con tu permiso usamos un identificador aleatorio de tu navegador para saber qué productos se ven y mejorar la tienda. No usamos tu nombre ni tu teléfono para esto y puedes cambiar tu decisión cuando quieras en "Preferencias de privacidad". Es opcional: puedes comprar igual si lo rechazas.
+
+### personalization_consent_text
+Usar los productos que ves para mostrarte recomendaciones y, solo si verificas tu número con la tienda, relacionar esa navegación con tu ficha de cliente para atenderte mejor. Es opcional y puedes retirarlo cuando quieras.
+
+### restock_consent_text
+Autorizo a {{responsable}} a contactarme por WhatsApp o llamada al número indicado únicamente para avisarme que este producto volvió a estar disponible, conforme a la Política de Tratamiento de Datos Personales. El aviso no me obliga a comprar.
+
+### shipping_policy_text
+ENVÍOS Y ENTREGAS
+1. Ofrecemos las modalidades que aparecen al hacer el pedido (por ejemplo, recoger en bodega, domicilio en la ciudad y envío nacional) con su costo informado antes de confirmar la venta.
+2. Los plazos son estimados y se cuentan desde la confirmación del pago o de la venta. Si no se pacta otro, el plazo máximo es de treinta (30) días calendario.
+3. Para domicilios y envíos nacionales debes indicar una dirección completa y correcta y garantizar que un adulto reciba el pedido. Un nuevo intento de entrega por datos errados o ausencia puede tener un costo adicional, que te informaremos antes.
+4. Al recibir, revisa el empaque y el producto. Si ves daños, déjalos anotados en la guía o con el transportador y avísanos dentro de las 24 horas siguientes con fotografías. Esto no limita tu garantía por defectos no visibles.
+5. Para recoger en bodega se entrega al titular del pedido o a quien autorice por escrito, presentando el número de pedido.
+6. Los productos grandes (neveras, lavadoras, televisores y similares) se entregan en la puerta de acceso del inmueble; la instalación no está incluida salvo que se pacte.
+
+### returns_policy_text
+CAMBIOS, DEVOLUCIONES, RETRACTO Y GARANTÍA
+1. Retracto (ventas a distancia, consumidor final): puedes retractarte dentro de los cinco (5) días hábiles siguientes a la entrega. El producto debe estar sin uso, con accesorios, manuales y empaque original; el costo de la devolución corre por tu cuenta y el dinero se reintegra dentro de los treinta (30) días calendario siguientes. No aplica en las excepciones del artículo 47 de la Ley 1480 de 2011 ni en compras para reventa.
+2. Garantía legal: el término es el indicado en la ficha o en el comprobante; si no se indica, un (1) año para productos nuevos. Escríbenos con tu número de pedido; podremos pedir diagnóstico técnico y responderemos en máximo quince (15) días hábiles. No cubre daños por fuerza mayor, hecho de un tercero, uso indebido o por no seguir las instrucciones del manual.
+3. Cambios por preferencia (talla, color o modelo): son una cortesía, dentro de los cinco (5) días hábiles siguientes a la entrega, con el producto sin uso y en su empaque original, sujetos a disponibilidad; el envío del cambio corre por tu cuenta.
+4. Compras al por mayor o para reventa: devoluciones solo por defecto de fábrica o error de despacho, reportados dentro de los tres (3) días hábiles siguientes a la entrega.
+5. Para cualquier solicitud escríbenos al WhatsApp {{whatsapp}}.
+
+### warranty_text
+Garantía legal según la Ley 1480 de 2011 por el término indicado para cada producto; si no se indica, un (1) año para productos nuevos desde la entrega. No cubre daños por fuerza mayor, hecho de un tercero, uso indebido o por no atender las instrucciones de instalación, uso y mantenimiento. Para hacerla efectiva presenta este comprobante. Retracto en ventas a distancia: 5 días hábiles desde la entrega (art. 47 Ley 1480 de 2011), salvo excepciones legales y compras para reventa.
+
+### quote_terms
+Cotización válida por 8 días calendario. Precios en pesos colombianos con impuestos aplicables incluidos; el envío se informa por separado. Esta cotización no reserva inventario: la disponibilidad se confirma al aceptarla. La venta se perfecciona con la confirmación de la tienda y el pago acordado. Aplican los Términos y Condiciones publicados en el sitio web.
+
+### sale_terms
+Comprobante comercial de la venta. La venta se rige por los Términos y Condiciones aceptados al hacer el pedido. Revisa los productos al recibirlos e informa cualquier novedad dentro de las 24 horas siguientes. Conserva este documento para garantías, cambios y devoluciones.

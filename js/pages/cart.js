@@ -4,13 +4,17 @@ import { openSheet, confirmAction } from '../components/modal.js';
 import { renderProducts } from '../components/product-card.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
-import { getCategories, getProducts, getProductsByIds } from '../lib/api.js';
+import { getCategories, getProductRelationships, getProducts, getProductsByIds } from '../lib/api.js';
+import { recommendForCart } from '../lib/public-reco.js';
+import { observeImpressions, track } from '../lib/privacy.js';
+import { checkCoupon, clearStoredCoupon, couponMessage, getStoredCoupon, setStoredCoupon } from '../lib/coupon-client.js';
 import { $, escapeHtml, formatMoney, getCategoryUrl, getProductUrl, productImage } from '../lib/helpers.js';
 import { cartPricing, variantPrice } from '../lib/pricing.js';
 import { clearCart, getCart, setCart, updateCartLine } from '../lib/store.js';
 
 let productsById = new Map();
 let lineStatus = new Map();
+let couponResult = null; let couponRequest = 0; let couponBusy = false;
 const realOption = value => Boolean(value) && !/^única$/i.test(String(value).trim());
 const optionText = item => [item.color, item.size].filter(realOption).join(' · ');
 const tiersOf = product => (product.price_tiers || []).map(tier => ({ min_quantity: Number(tier.min_quantity), unit_price: Number(tier.unit_price) }));
@@ -107,25 +111,59 @@ function renderCart() {
   document.body.classList.remove('cart-empty');
   root.innerHTML = `${progressMarkup(cart, pricing)}${cart.map(item => itemMarkup(item, pricing.lines.get(item.line_id))).join('')}`;
   renderSummary(cart, pricing, invalid > 0);
+  scheduleCouponCheck(cart);
+}
+
+// Revalida el código con el carrito vigente cada vez que cambia (cantidad, variante, líneas).
+let couponTimer;
+function scheduleCouponCheck(cart) {
+  if (!getStoredCoupon()) { couponResult = null; return; }
+  clearTimeout(couponTimer);
+  couponBusy = true; renderCouponStatus();
+  couponTimer = setTimeout(async () => {
+    const request = ++couponRequest;
+    const result = await checkCoupon(cart);
+    if (request !== couponRequest) return;
+    couponBusy = false; couponResult = result;
+    renderSummary(getCart(), cartPricing(getCart()), getCart().some(item => lineStatus.get(item.line_id)?.valid === false));
+  }, 350);
+}
+
+function renderCouponStatus() {
+  const status = document.querySelector('[data-coupon-status]');
+  if (status && couponBusy) { status.textContent = 'Verificando código…'; status.dataset.tone = 'muted'; }
 }
 
 function renderSummary(cart, pricing, invalid) {
   const listTotal = pricing.subtotal + pricing.totalSavings;
+  const code = getStoredCoupon();
+  const valid = couponResult?.status === 'valido';
+  const discount = valid ? Number(couponResult.discount_total) : 0;
+  const serverSubtotal = valid ? Number(couponResult.subtotal) : pricing.subtotal;
+  const total = serverSubtotal - discount;
   $('#cart-summary').hidden = false;
   $('#cart-summary').innerHTML = `<div class="summary__head"><h2>Resumen del pedido</h2><button id="clear-cart" class="btn--tertiary" type="button">Vaciar</button></div>
     <dl class="summary__lines">
       <div><dt>Subtotal (${pricing.units} producto${pricing.units === 1 ? '' : 's'})</dt><dd>${formatMoney(listTotal)}</dd></div>
       ${pricing.promoSavings > 0 ? `<div class="is-saving"><dt>Ahorro en ofertas</dt><dd>−${formatMoney(pricing.promoSavings)}</dd></div>` : ''}
       ${pricing.wholesaleSavings > 0 ? `<div class="is-saving"><dt>Descuento por mayor</dt><dd>−${formatMoney(pricing.wholesaleSavings)}</dd></div>` : ''}
+      ${valid ? `<div class="is-saving"><dt>Código ${escapeHtml(couponResult.code)}</dt><dd>−${formatMoney(discount)}</dd></div>` : ''}
       <div><dt>Envío</dt><dd class="summary__muted">Se calcula al confirmar</dd></div>
-      <div class="summary__total"><dt>Total</dt><dd>${formatMoney(pricing.subtotal)}</dd></div>
+      <div class="summary__total"><dt>Total</dt><dd>${formatMoney(total)}</dd></div>
     </dl>
-    ${pricing.totalSavings > 0 ? `<p class="summary__savings">${icon('tag', { size: 18 })}Estás ahorrando ${formatMoney(pricing.totalSavings)}</p>` : ''}
+    ${valid && serverSubtotal !== pricing.subtotal ? '<p class="notice notice--info">Los precios se actualizaron al validar el código; el total mostrado es el vigente.</p>' : ''}
+    <form class="coupon-box" data-coupon-form novalidate>
+      <label class="field" for="coupon-code"><span class="field__label">Código de descuento</span></label>
+      <div class="coupon-box__row"><input id="coupon-code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24" value="${escapeHtml(code)}" ${code ? 'readonly' : ''} aria-describedby="coupon-status">
+        ${code ? '<button class="btn btn--secondary btn--sm" data-coupon-remove type="button">Quitar</button>' : '<button class="btn btn--secondary btn--sm" type="submit">Aplicar</button>'}</div>
+      <p id="coupon-status" class="coupon-box__status" data-coupon-status role="status" data-tone="${valid ? 'success' : couponResult ? 'warning' : 'muted'}">${couponBusy ? 'Verificando código…' : escapeHtml(couponMessage(couponResult))}</p>
+    </form>
+    ${pricing.totalSavings + discount > 0 ? `<p class="summary__savings">${icon('tag', { size: 18 })}Estás ahorrando ${formatMoney(pricing.totalSavings + discount)}</p>` : ''}
     ${invalid ? '<button class="btn btn--primary btn--block" type="button" disabled>Revisa el carrito para continuar</button>' : '<a class="btn btn--primary btn--block" href="checkout.html">Continuar pedido</a>'}
-    <p class="summary__note">Confirmarás tu pedido por WhatsApp. No se hacen pagos en la web.</p>`;
+    <p class="summary__note">Confirmarás tu pedido por WhatsApp. No se hacen pagos en la web.${code ? ' El código se vuelve a comprobar al enviar el pedido.' : ''}</p>`;
   const sticky = $('#cart-sticky-checkout');
   sticky.hidden = false;
-  sticky.innerHTML = `<div class="sticky-buy__price"><small>Total</small><strong>${formatMoney(pricing.subtotal)}</strong></div>${invalid ? '<button class="btn btn--primary" type="button" disabled>Revisar carrito</button>' : '<a class="btn btn--primary" href="checkout.html">Continuar pedido</a>'}`;
+  sticky.innerHTML = `<div class="sticky-buy__price"><small>Total</small><strong>${formatMoney(total)}</strong></div>${invalid ? '<button class="btn btn--primary" type="button" disabled>Revisar carrito</button>' : '<a class="btn btn--primary" href="checkout.html">Continuar pedido</a>'}`;
   $('#clear-cart').addEventListener('click', async event => {
     if (!(await confirmAction('Se quitarán todos los productos del carrito.', '¿Vaciar el carrito?', { confirmLabel: 'Vaciar carrito', trigger: event.currentTarget }))) return;
     const previous = getCart();
@@ -133,6 +171,21 @@ function renderSummary(cart, pricing, invalid) {
     lineStatus.clear();
     renderCart();
     toast('Carrito vacío', 'success', 5000, { label: 'Deshacer', onClick: () => { setCart(previous); renderCart(); } });
+  });
+  const form = $('[data-coupon-form]');
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const value = form.elements.code.value.trim();
+    if (!value) { form.querySelector('[data-coupon-status]').textContent = couponMessage({ status: 'vacio' }); return; }
+    setStoredCoupon(value); couponResult = null;
+    track('coupon_applied', { properties: { reason: 'solicitado' } });
+    renderCart();
+    requestAnimationFrame(() => $('#coupon-code')?.focus());
+  });
+  form.querySelector('[data-coupon-remove]')?.addEventListener('click', () => {
+    clearStoredCoupon(); couponResult = null; couponBusy = false; renderCart();
+    requestAnimationFrame(() => $('#coupon-code')?.focus());
+    toast('Código quitado');
   });
 }
 
@@ -230,16 +283,36 @@ async function loadPopularCategories() {
   } catch { /* opcional */ }
 }
 
+// Complementos de TODO el carrito según las reglas de la tienda (sin sustitutos de lo
+// que ya eligió). Sin reglas configuradas: destacados rotulados como tales.
 async function loadRecommendations(cartProducts) {
   try {
-    const first = cartProducts[0];
-    const categoryId = first?.product_categories?.[0]?.category_id;
-    const { products } = await getProducts({ categoryId, featured: first ? undefined : true, pageSize: 10 });
-    const inCart = new Set(getCart().map(item => item.product_id));
-    const recommendations = products.filter(product => !inCart.has(product.id) && !product.force_sold_out && product.product_variants.some(variant => variant.active && Number(variant.stock) > 0)).slice(0, 8);
-    if (!recommendations.length) return;
+    const cart = getCart();
+    const [categories, relationships] = await Promise.all([getCategories().catch(() => []), getProductRelationships().catch(() => [])]);
+    const targetProducts = relationships.filter(rule => rule.target_type === 'product').map(rule => rule.target_id);
+    const targetCategories = [...new Set(relationships.filter(rule => rule.target_type === 'category').map(rule => rule.target_id))].slice(0, 6);
+    const pools = await Promise.all([
+      targetProducts.length ? getProductsByIds(targetProducts.slice(0, 40)) : [],
+      ...targetCategories.map(categoryId => getProducts({ categoryId, pageSize: 12 }).then(result => result.products).catch(() => []))
+    ]);
+    const pool = [...new Map([...cartProducts, ...pools.flat()].map(item => [item.id, item])).values()];
+    let items = recommendForCart(cart, { products: pool, categories, relationships });
+    let title = 'Combina con tu pedido';
+    if (!items.length) {
+      const inCart = new Set(cart.map(item => item.product_id));
+      const cartCategories = new Set(cartProducts.flatMap(product => (product.product_categories || []).map(link => link.category_id)));
+      const { products } = await getProducts({ featured: true, pageSize: 12 });
+      items = products.filter(product => !inCart.has(product.id) && !(product.product_categories || []).some(link => cartCategories.has(link.category_id)) && !product.force_sold_out && product.product_variants.some(variant => variant.active && Number(variant.stock) > 0)).slice(0, 8).map(product => ({ product, reason: 'Destacado de la tienda' }));
+      title = 'Destacados de la tienda';
+    }
+    if (!items.length) return;
     $('#cart-recommendations').hidden = false;
-    renderProducts($('#cart-recommendation-products'), recommendations);
+    $('#cart-recommendations-title').textContent = title;
+    renderProducts($('#cart-recommendation-products'), items.map(item => item.product));
+    $('#cart-recommendation-products').querySelectorAll('.product-card').forEach((card, position) => {
+      card.dataset.recoProduct = items[position]?.product.id || ''; card.dataset.recoPosition = String(position + 1);
+      if (items[position]?.reason) card.querySelector('.product-card__body')?.insertAdjacentHTML('beforeend', `<p class="product-card__reason">${escapeHtml(items[position].reason)}</p>`);
+    });
+    observeImpressions($('#cart-recommendations'), 'carrito');
   } catch (error) { console.warn('No se pudieron cargar recomendaciones:', error); }
 }
-

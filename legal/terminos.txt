@@ -1,0 +1,101 @@
+TÉRMINOS Y CONDICIONES DE USO Y DE VENTA
+Versión {{version_terminos}} · vigente desde el {{vigencia}}
+
+1. QUIÉN VENDE
+1.1. Este sitio web ({{sitio}}) y la venta de los productos que exhibe están a cargo de {{responsable}} (en adelante, "la Tienda"), con domicilio en {{ciudad}}, Colombia.
+Identificación: {{identificacion}}.
+Dirección: {{direccion}}.
+Correo electrónico: {{correo}}.
+Teléfono: {{telefono}}.
+1.2. Canal principal de atención y de solicitudes: WhatsApp {{whatsapp}}.
+
+2. ACEPTACIÓN
+2.1. Para enviar un pedido debes marcar la casilla en la que declaras que leíste y aceptas estos Términos y Condiciones y la Política de Tratamiento de Datos Personales vigente. Sin esa aceptación no es posible registrar pedidos en línea.
+2.2. La Tienda conserva constancia de la versión aceptada, la fecha y hora y el pedido al que corresponde. A cada pedido se le aplica la versión vigente en el momento en que lo enviaste.
+2.3. Si no estás de acuerdo con estos términos, no envíes pedidos por el sitio; puedes comunicarte con la Tienda por sus canales de atención.
+
+3. CAPACIDAD
+3.1. Para comprar debes ser mayor de edad y tener capacidad legal para contratar. Los menores de edad solo pueden comprar por medio de su representante legal.
+3.2. Declaras que los datos que suministras son verdaderos, completos y te pertenecen o estás autorizado para suministrarlos. La Tienda no responde por los perjuicios derivados de datos falsos, incompletos o de terceros suministrados sin autorización.
+
+4. CÓMO FUNCIONA LA COMPRA
+4.1. El catálogo exhibe productos, precios y existencias de forma informativa. Las imágenes son ilustrativas; colores, empaques y accesorios pueden variar ligeramente frente a la fotografía sin alterar las características esenciales informadas en la ficha.
+4.2. Registrar un pedido en el sitio es una solicitud de compra. No constituye una venta cerrada ni reserva inventario.
+4.3. La venta se perfecciona cuando la Tienda te confirma, por WhatsApp u otro canal oficial, la disponibilidad, el precio total (productos, descuentos, costo de envío e impuestos aplicables), la forma de pago y la forma y el plazo de entrega, y tú aceptas esas condiciones.
+4.4. Antes de esa confirmación la Tienda puede no aceptar un pedido, informándote el motivo, entre otros casos por falta de existencias, datos incompletos o inconsistentes, imposibilidad de entrega en la zona indicada, sospecha razonable de fraude o error evidente en la información publicada. En esos casos no se genera ningún cobro y, si hubieras pagado, se te devuelve el valor pagado.
+4.5. La Tienda entrega un comprobante comercial de la venta. La factura electrónica de venta se expide cuando legalmente corresponda, conforme a la normativa tributaria vigente; si la requieres, indícalo al confirmar tu pedido y suministra los datos necesarios.
+
+5. PRECIOS
+5.1. Los precios se expresan en pesos colombianos e incluyen los impuestos aplicables. El costo de envío se informa por separado antes de confirmar la venta.
+5.2. Los precios por mayor aplican solo cuando se alcanza la cantidad mínima indicada en la ficha, sumando las unidades de un mismo producto en el pedido.
+5.3. Las promociones tienen la vigencia y las condiciones indicadas en el sitio y aplican hasta agotar existencias, cuando así se informe.
+5.4. Si antes de confirmar la venta se detecta un error evidente en el precio o en la información de un producto (por ejemplo, un valor notoriamente inferior al real por un error de digitación), la Tienda te lo informará y podrás aceptar las condiciones correctas o desistir sin ningún costo. Una vez confirmada la venta, la Tienda respeta el precio informado.
+
+6. PAGOS
+6.1. El sitio no procesa pagos. El pago se coordina con la Tienda por sus canales oficiales usando los medios ofrecidos en el pedido.
+6.2. La Tienda nunca te pedirá por chat o llamada claves, códigos de verificación, códigos de seguridad de tarjetas ni el acceso a tus aplicaciones bancarias.
+6.3. Realiza pagos únicamente a las cuentas o medios que la Tienda te informe por sus canales oficiales para tu pedido. La Tienda no responde por pagos realizados a cuentas, personas o enlaces no informados por ella.
+6.4. Salvo en el pago contra entrega, el despacho se realiza después de verificado el pago. Los pedidos que no se paguen ni se confirmen dentro de las 48 horas siguientes a la confirmación de la Tienda podrán cancelarse.
+6.5. Cuando el pago se realice por un medio que conforme a la ley permita la reversión del pago (por ejemplo, tarjetas o mecanismos electrónicos), podrás solicitarla en los casos y plazos previstos en el artículo 51 de la Ley 1480 de 2011.
+
+7. ENTREGAS
+7.1. Las formas de entrega, costos y plazos se informan en el pedido y en la Política de envíos. Los plazos son estimados y se cuentan desde la confirmación del pago o de la venta; si no se pacta otro, el plazo máximo de entrega es de treinta (30) días calendario.
+7.2. Debes suministrar una dirección completa y correcta y garantizar que una persona mayor de edad reciba el pedido. Los reprocesos de entrega por datos errados, ausencia en el lugar o rechazo injustificado pueden generar un nuevo costo de envío, que se te informará antes de reprogramar.
+7.3. Al recibir, revisa el estado externo del empaque y del producto. Si observas daños visibles, déjalo anotado en la guía o con el transportador y avísanos dentro de las 24 horas siguientes con fotografías. Esta revisión no limita tus derechos de garantía por defectos que no sean visibles al recibir.
+7.4. En la modalidad de recoger en bodega, el pedido se entrega al titular o a quien este autorice por escrito, previa verificación del número de pedido.
+
+8. DERECHO DE RETRACTO (VENTAS A DISTANCIA)
+8.1. Si compraste como consumidor final por este sitio o por canales a distancia, puedes retractarte dentro de los cinco (5) días hábiles siguientes a la entrega del producto, conforme al artículo 47 de la Ley 1480 de 2011.
+8.2. El producto debe devolverse sin uso, en las mismas condiciones en que lo recibiste, con todos sus accesorios, manuales, obsequios y empaques originales. Los costos de transporte y los demás que conlleve la devolución corren por tu cuenta, como lo prevé la ley.
+8.3. La Tienda reintegrará el dinero pagado dentro de los treinta (30) días calendario siguientes a la fecha en que ejerciste el retracto, una vez recibido el producto. Si usaste un código de descuento, se reintegra el valor efectivamente pagado.
+8.4. No procede el retracto en los casos exceptuados por la ley, entre ellos: bienes confeccionados conforme a las especificaciones del consumidor o personalizados; bienes que por su naturaleza no puedan ser devueltos o puedan deteriorarse o caducar con rapidez; bienes de uso personal; y los demás casos previstos en el artículo 47 de la Ley 1480 de 2011.
+8.5. El retracto no aplica a compras realizadas para reventa o para una actividad comercial (numeral 11).
+
+9. GARANTÍA LEGAL
+9.1. Todos los productos nuevos cuentan con la garantía legal de calidad, idoneidad, seguridad y buen estado prevista en la Ley 1480 de 2011 y el Decreto 735 de 2013.
+9.2. El término de la garantía es el indicado para cada producto en su ficha o en el comprobante. Si no se indica, el término es de un (1) año para productos nuevos, contado desde la entrega.
+9.3. Para hacerla efectiva, comunícate por los canales de atención indicando el número de pedido o comprobante y el defecto, y entrega el producto en el lugar que la Tienda te indique. La Tienda podrá solicitar un diagnóstico técnico. Responderemos tu solicitud dentro de los quince (15) días hábiles siguientes a su recepción.
+9.4. La garantía se atiende en el orden previsto en la ley: reparación gratuita; si la falla se repite o la reparación no es posible, cambio del producto por otro igual o de similares características; y en los casos previstos en la ley, devolución del dinero.
+9.5. Conforme al artículo 16 de la Ley 1480 de 2011, la Tienda no está obligada a responder por la garantía cuando el daño se deba a fuerza mayor o caso fortuito, al hecho de un tercero, al uso indebido del producto o a no haber atendido las instrucciones de instalación, uso o mantenimiento indicadas en el manual del producto, en su empaque o informadas por la Tienda. Esto incluye, entre otros, golpes, humedad, manipulación o reparación por personas no autorizadas, instalación eléctrica o de gas inadecuada y variaciones de voltaje cuando el manual advierta la necesidad de protección.
+9.6. El desgaste normal de piezas y accesorios por el uso, y los consumibles, no constituyen defecto de fábrica.
+9.7. Las garantías adicionales que otorguen los fabricantes se rigen por sus propias condiciones y no reemplazan la garantía legal.
+
+10. CAMBIOS
+10.1. Los cambios por talla, color, modelo o preferencia, distintos del retracto y de la garantía, son una cortesía de la Tienda: se aceptan dentro de los cinco (5) días hábiles siguientes a la entrega, con el producto sin uso y en su empaque original, sujetos a disponibilidad. Los costos de envío del cambio corren por cuenta del cliente.
+
+11. COMPRAS AL POR MAYOR O PARA REVENTA
+11.1. Cuando adquieres productos para revenderlos o para una actividad comercial o productiva vinculada a tu actividad económica, no actúas como consumidor final en los términos del numeral 3 del artículo 5 de la Ley 1480 de 2011. En ese caso la relación se rige por el Código de Comercio y por estos términos.
+11.2. En esas compras: no aplica el derecho de retracto; las devoluciones solo proceden por defecto de fábrica o por error de despacho atribuible a la Tienda, reportados dentro de los tres (3) días hábiles siguientes a la entrega con fotografías y el producto en su empaque original; y la Tienda atenderá los defectos de fábrica dentro del término de garantía informado para cada producto.
+11.3. Los precios por mayor requieren las cantidades mínimas publicadas y pueden variar entre pedidos.
+
+12. CÓDIGOS DE DESCUENTO Y OFERTAS
+12.1. Los códigos de descuento tienen las condiciones informadas al entregarlos: productos a los que aplican, valor o porcentaje, tope, mínimo de compra, vigencia y número de usos.
+12.2. Se admite un código por pedido. Los códigos no son canjeables por dinero, no son acumulables con otros códigos y no se reponen si se pierden o vencen.
+12.3. Los códigos de un solo uso entregados a una persona pueden ser usados por quien los tenga; cuida que no lo use un tercero. Los códigos marcados como personales solo funcionan para el cliente verificado.
+12.4. El descuento se calcula al registrar el pedido y se aplica definitivamente al confirmar la venta. La Tienda podrá anular el uso de códigos obtenidos o usados de forma fraudulenta o contraria a sus condiciones.
+
+13. USO DEL SITIO Y PROPIEDAD INTELECTUAL
+13.1. Te comprometes a usar el sitio de buena fe. Está prohibido registrar pedidos falsos o automatizados, suplantar a otras personas, intentar acceder a información de terceros o afectar el funcionamiento del sitio. La Tienda puede rechazar pedidos que incumplan estas reglas.
+13.2. Los textos, diseños, logotipos y contenidos del sitio pertenecen a la Tienda o a sus titulares y no pueden usarse sin autorización. Las marcas de los productos pertenecen a sus respectivos fabricantes.
+
+14. RESPONSABILIDAD
+14.1. La Tienda responde por sus obligaciones en los términos de la ley.
+14.2. La Tienda no responde por interrupciones del sitio, de internet, de WhatsApp o de servicios de terceros ajenos a su control, ni por daños derivados del uso de los productos en forma contraria a sus instrucciones, sin perjuicio de los derechos que la ley reconoce al consumidor, los cuales no pueden renunciarse.
+14.3. Ninguna disposición de estos términos limita las garantías ni los derechos irrenunciables del consumidor previstos en la ley colombiana.
+
+15. PETICIONES, QUEJAS Y RECLAMOS
+15.1. Puedes presentar peticiones, quejas y reclamos por WhatsApp {{whatsapp}}.
+Correo electrónico para reclamos: {{correo}}.
+15.2. Responderemos dentro de los quince (15) días hábiles siguientes a su recepción. Como consumidor, también puedes acudir a la Superintendencia de Industria y Comercio (www.sic.gov.co).
+
+16. COMUNICACIONES
+16.1. Los mensajes y llamadas sobre tu pedido, su pago, entrega, garantía o devoluciones forman parte de la gestión de tu compra. Los mensajes promocionales solo se envían si los autorizaste de forma separada y puedes retirar esa autorización en cualquier momento.
+
+17. CAMBIOS A ESTOS TÉRMINOS
+17.1. La Tienda puede actualizar estos términos. Cada versión indica su fecha de vigencia y aplica a los pedidos enviados desde esa fecha; los pedidos anteriores se rigen por la versión que aceptaste.
+
+18. LEY APLICABLE
+18.1. Estos términos se rigen por las leyes de la República de Colombia, en particular la Ley 1480 de 2011 (Estatuto del Consumidor), la Ley 527 de 1999, la Ley 1581 de 2012 y el Código de Comercio. Las controversias se resolverán ante las autoridades colombianas competentes, sin perjuicio de las acciones de protección al consumidor.
+
+19. DATOS PERSONALES
+19.1. El tratamiento de tus datos personales se rige por la Política de Tratamiento de Datos Personales publicada en {{sitio}}/ayuda.html#privacidad, que forma parte de estos términos.

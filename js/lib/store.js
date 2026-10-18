@@ -1,3 +1,6 @@
+// Los eventos de navegación solo se envían con autorización de analítica (privacy.js).
+import { track } from './privacy.js';
+
 const CART_KEY = 'bodega_mayorista_fc_cart_v1';
 const FAVORITES_KEY = 'bodega_mayorista_fc_favorites_v1';
 
@@ -24,6 +27,7 @@ export function toggleFavorite(id) {
   const favorites = getFavorites();
   const next = favorites.includes(id) ? favorites.filter(item => item !== id) : [...favorites, id];
   setFavorites(next);
+  track(next.includes(id) ? 'favorite_added' : 'favorite_removed', { productId: id });
   return next.includes(id);
 }
 
@@ -34,14 +38,22 @@ export function addCartItem(item) {
   if (existing) existing.quantity = Math.min(Number(existing.stock || 99), existing.quantity + item.quantity);
   else cart.push({ ...item, line_id: crypto.randomUUID() });
   setCart(cart);
+  track('cart_item_added', { productId: item.product_id, variantId: item.variant_id, properties: { quantity: Number(item.quantity) } });
   window.dispatchEvent(new CustomEvent('cart:added', { detail: { item } }));
 }
 
 export function updateCartLine(lineId, patch) {
-  setCart(getCart().map(item => item.line_id === lineId ? { ...item, ...patch } : item));
+  const cart = getCart().map(item => item.line_id === lineId ? { ...item, ...patch } : item);
+  setCart(cart);
+  const line = cart.find(item => item.line_id === lineId);
+  if (line) track('cart_item_updated', { productId: line.product_id, variantId: line.variant_id, properties: { quantity: Number(line.quantity) } });
 }
 
-export function removeCartLine(lineId) { setCart(getCart().filter(item => item.line_id !== lineId)); }
+export function removeCartLine(lineId) {
+  const line = getCart().find(item => item.line_id === lineId);
+  setCart(getCart().filter(item => item.line_id !== lineId));
+  if (line) track('cart_item_removed', { productId: line.product_id, variantId: line.variant_id, properties: { quantity: 0 } });
+}
 export const cartCount = () => getCart().reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 export const cartTotal = () => getCart().reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
 

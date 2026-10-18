@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { PAGE_SIZE, fetchAllPages } from './paging.js';
 import { currentPrice, discountPercent, normalizeText } from './helpers.js';
 
 const PRODUCT_SELECT = `
@@ -154,21 +155,37 @@ export async function markOrderWhatsappOpened(requestKey) {
 
 const CUSTOMER_REF = 'customers(id,full_name,phone_original,phone_normalized,city,address,birth_date,archived_at)';
 
+export { PAGE_SIZE, fetchAllPages };
+const ordered = query => query.order('created_at', { ascending: false }).order('id', { ascending: false });
+
 export async function getCustomers({ archived = false } = {}) {
-  let query = supabase.from('customers').select('*,customer_consents(*),birthday_contacts(*)').is('merged_into', null).order('updated_at', { ascending: false });
-  query = archived ? query.not('archived_at', 'is', null) : query.is('archived_at', null);
-  return unwrap(await query);
+  return fetchAllPages(() => {
+    const query = supabase.from('customers').select('*,customer_consents(*),birthday_contacts(*)').is('merged_into', null).order('updated_at', { ascending: false }).order('id');
+    return archived ? query.not('archived_at', 'is', null) : query.is('archived_at', null);
+  });
 }
 
-// Mismo detalle que los listados (líneas, devoluciones y cliente) para analizar qué compra
-// el cliente y abrir, descargar o imprimir cada documento desde su ficha.
+export async function getCustomer(id) {
+  return unwrap(await supabase.from('customers').select('*,customer_consents(*),birthday_contacts(*)').eq('id', id).maybeSingle());
+}
+
+// Historial COMPLETO de un cliente, por páginas y con estado por fuente. Un error en una
+// fuente no se convierte en "sin datos": queda en coverage.errors y el análisis es parcial.
 export async function getCustomerHistory(customerId) {
-  const [orders, quotes, sales] = await Promise.all([
-    supabase.from('orders').select(`*,${CUSTOMER_REF},order_items(*),sales(id,sale_number,status)`).eq('customer_id', customerId).order('created_at', { ascending: false }),
-    supabase.from('quotes').select(`*,${CUSTOMER_REF},quote_items(*)`).eq('customer_id', customerId).order('created_at', { ascending: false }),
-    supabase.from('sales').select(`*,${CUSTOMER_REF},sale_items(*),sale_returns(*)`).eq('customer_id', customerId).order('created_at', { ascending: false })
-  ]);
-  return { orders: unwrap(orders), quotes: unwrap(quotes), sales: unwrap(sales) };
+  const sources = {
+    orders: () => ordered(supabase.from('orders').select(`*,${CUSTOMER_REF},order_items(*),sales(id,sale_number,status)`).eq('customer_id', customerId)),
+    quotes: () => ordered(supabase.from('quotes').select(`*,${CUSTOMER_REF},quote_items(*)`).eq('customer_id', customerId)),
+    sales: () => ordered(supabase.from('sales').select(`*,${CUSTOMER_REF},sale_items(*),sale_returns(*)`).eq('customer_id', customerId))
+  };
+  const entries = await Promise.all(Object.entries(sources).map(async ([key, build]) => {
+    try { return [key, await fetchAllPages(build), null]; } catch (error) { console.error(`Historial (${key}):`, error); return [key, Object.assign([], { complete: false }), error]; }
+  }));
+  const history = Object.fromEntries(entries.map(([key, rows]) => [key, rows]));
+  const errors = entries.filter(([, , error]) => error).map(([key]) => key);
+  const truncated = entries.filter(([, rows]) => rows.truncated).map(([key]) => key);
+  history.coverage = { complete: !errors.length && !truncated.length, errors, truncated, loadedAt: new Date().toISOString() };
+  if (errors.length === entries.length) throw entries[0][2];
+  return history;
 }
 
 // phone_normalized lo calcula siempre la base de datos a partir de phone_original.
@@ -185,23 +202,24 @@ export async function saveBirthdayContact(values, id = null) { return saveRow('b
 export async function mergeCustomers(keepId, duplicateId) { return unwrap(await supabase.rpc('merge_customers', { keep_customer: keepId, duplicate_customer: duplicateId })); }
 
 export async function getOrders() {
-  return unwrap(await supabase.from('orders').select(`*,${CUSTOMER_REF},order_items(*),sales(id,sale_number,status)`).order('created_at', { ascending: false }));
+  return fetchAllPages(() => ordered(supabase.from('orders').select(`*,${CUSTOMER_REF},order_items(*),sales(id,sale_number,status)`)));
 }
 export async function updateOrder(id, values) { return unwrap(await supabase.from('orders').update(values).eq('id', id).select().single()); }
 export async function createAdminOrder(payload) { return unwrap(await supabase.rpc('create_admin_order', { payload })); }
 
 export async function getQuotes() {
-  return unwrap(await supabase.from('quotes').select(`*,${CUSTOMER_REF},quote_items(*)`).order('created_at', { ascending: false }));
+  return fetchAllPages(() => ordered(supabase.from('quotes').select(`*,${CUSTOMER_REF},quote_items(*)`)));
 }
 export async function saveAdminQuote(id, payload) { return unwrap(await supabase.rpc('save_admin_quote', { target_quote: id, payload })); }
 export async function setQuoteStatus(id, status) { return unwrap(await supabase.rpc('set_quote_status', { target_quote: id, new_status: status })); }
 export async function deleteAdminQuote(id) { return unwrap(await supabase.rpc('delete_admin_quote', { target_quote: id })); }
 
 export async function getSales() {
-  return unwrap(await supabase.from('sales').select(`*,${CUSTOMER_REF},sale_items(*),sale_returns(*)`).order('created_at', { ascending: false }));
+  return fetchAllPages(() => ordered(supabase.from('sales').select(`*,${CUSTOMER_REF},sale_items(*),sale_returns(*)`)));
 }
 
-export async function confirmSale(id) { return unwrap(await supabase.rpc('confirm_sale', { target_sale: id })); }
+// accept_coupon_review solo tras mostrar al administrador el detalle del error BM002.
+export async function confirmSale(id, acceptCouponReview = false) { return unwrap(await supabase.rpc('confirm_sale', { target_sale: id, accept_coupon_review: acceptCouponReview })); }
 export async function cancelSale(id, reason = null) { return unwrap(await supabase.rpc('cancel_sale', { target_sale: id, reason })); }
 export async function setSaleStatus(id, status, paymentMethod = null) { return unwrap(await supabase.rpc('set_sale_status', { target_sale: id, new_status: status, payment_method: paymentMethod })); }
 export async function registerSaleReturn(id, lines, restock, requestKey, note = null) {
@@ -405,7 +423,9 @@ export async function validateCart(items) {
 }
 
 export async function getAdminProducts() {
-  return attachPriceTiers(unwrap(await supabase.from('products').select(PRODUCT_SELECT).order('updated_at', { ascending: false })));
+  const products = await fetchAllPages(() => supabase.from('products').select(PRODUCT_SELECT).order('updated_at', { ascending: false }).order('id'), { pageSize: 250 });
+  await attachPriceTiers(products);
+  return products;
 }
 
 export async function saveRow(table, values, id = null) {
@@ -575,5 +595,84 @@ export async function uploadImage(bucket, file, folder = 'uploads') {
   unwrap(await supabase.storage.from(bucket).upload(path, file, { cacheControl: '31536000', upsert: false }));
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
+
+// --- Relaciones de productos (reglas del recomendador) ------------------------------
+let relationshipsPromise;
+export function getProductRelationships({ refresh = false } = {}) {
+  if (refresh) relationshipsPromise = null;
+  relationshipsPromise ??= supabase.from('product_relationships').select('id,source_type,source_id,target_type,target_id,kind,strength,reposition_days,note,active')
+    .then(({ data, error }) => { if (error) { relationshipsPromise = null; if (isMissingRelation(error)) return []; throw error; } return data || []; });
+  return relationshipsPromise;
+}
+export async function saveProductRelationship(values, id = null) { relationshipsPromise = null; return saveRow('product_relationships', values, id); }
+export async function deleteProductRelationship(id) { relationshipsPromise = null; return deleteRow('product_relationships', id); }
+
+// --- Agregados privados del CRM (sin descargar ventas de toda la tienda) ------------
+export async function getCustomerRanking(customerId, since = null) {
+  const rows = unwrap(await supabase.rpc('crm_customer_ranking', { target_customer: customerId, since }));
+  return rows?.[0] || null;
+}
+export async function getPeerPatterns(customerId, windowDays = 90, minSupport = 5) {
+  return (unwrap(await supabase.rpc('crm_peer_patterns', { target_customer: customerId, window_days: windowDays, min_support: minSupport })) || [])
+    .map(row => ({ from_category: row.from_category, to_category: row.to_category, support: row.support, both: row.both_count, window_days: row.window_days_used }));
+}
+export async function getCustomerSignals(customerId) { return unwrap(await supabase.rpc('crm_customer_signals', { target_customer: customerId })) || []; }
+export async function getTrendingProducts(days = 30, limit = 12) {
+  const { data, error } = await supabase.rpc('public_trending_products', { days, result_limit: limit });
+  if (error) { console.warn('Tendencias no disponibles:', error.message); return []; }
+  return data || [];
+}
+export async function exportCustomerData(customerId) { return unwrap(await supabase.rpc('export_customer_data', { target_customer: customerId })); }
+export async function suppressCustomerSignals(customerId, reason) { return unwrap(await supabase.rpc('suppress_customer_signals', { target_customer: customerId, reason })); }
+export async function purgeBehaviorData() { return unwrap(await supabase.rpc('purge_behavior_data')); }
+export async function getMaintenanceRuns() { return unwrap(await supabase.from('maintenance_runs').select('*').order('ran_at', { ascending: false }).limit(5)); }
+
+// --- Identidad ------------------------------------------------------------------------
+export async function getIdentityLinks(customerId) { return unwrap(await supabase.from('identity_links').select('*').eq('customer_id', customerId).order('created_at', { ascending: false })); }
+export async function getPendingVerifications() { return unwrap(await supabase.from('identity_verifications').select('id,code,phone_normalized,status,requested_at,expires_at').eq('status', 'pendiente').order('requested_at', { ascending: false }).limit(50)); }
+export async function confirmIdentityVerification(code, observedPhone, note) { return unwrap(await supabase.rpc('confirm_identity_verification', { target_code: code, observed_phone: observedPhone, note })); }
+export async function unlinkIdentity(linkId, reason) { return unwrap(await supabase.rpc('unlink_identity', { target_link: linkId, reason })); }
+
+// --- Cupones y ofertas ------------------------------------------------------------------
+export async function getCoupons() { return fetchAllPages(() => supabase.from('coupons').select('*,coupon_scopes(*),coupon_uses(id,status,discount_total,reserved_at,expires_at,consumed_at,released_at,order_id,sale_id)').order('created_at', { ascending: false }).order('id')); }
+export async function saveCoupon(id, payload) { return unwrap(await supabase.rpc('save_coupon', { target: id, payload })); }
+export async function previewOffer(items, benefit) { return unwrap(await supabase.rpc('preview_offer', { items, benefit })); }
+export async function createCustomerOffer(payload) { return unwrap(await supabase.rpc('create_customer_offer', { payload })); }
+export async function updateCustomerOffer(id, payload) { return unwrap(await supabase.rpc('update_customer_offer', { target: id, payload })); }
+export async function createQuoteFromOffer(id) { return unwrap(await supabase.rpc('create_quote_from_offer', { target: id })); }
+export async function getCustomerOffers(customerId) { return unwrap(await supabase.from('customer_offers').select('*,coupons(code,ends_at,active,audience,coupon_uses(status,sale_id))').eq('customer_id', customerId).order('created_at', { ascending: false })); }
+// Validación pública del carrito: solo variantes, cantidades y código; el servidor calcula todo.
+export async function validateCartCoupon(items, code, visitor = null, deliveryMethodId = null) {
+  return unwrap(await supabase.rpc('validate_cart_coupon', { cart_items: items.map(item => ({ variant_id: item.variant_id, quantity: Number(item.quantity) })), code, visitor, delivery_method: deliveryMethodId }));
+}
+
+// --- Tareas y contactos -------------------------------------------------------------------
+export async function generateCustomerTasks(customerId = null) { return unwrap(await supabase.rpc('generate_customer_tasks', { target_customer: customerId })); }
+export async function getOpenTasks() {
+  return fetchAllPages(() => supabase.from('customer_tasks').select('*,customers(id,full_name,phone_original,phone_normalized)').in('status', ['pendiente', 'pospuesta']).order('priority', { ascending: false }).order('created_at').order('id'));
+}
+export async function getCustomerTasks(customerId) { return unwrap(await supabase.from('customer_tasks').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(100)); }
+export async function setTaskStatus(id, payload) { return unwrap(await supabase.rpc('set_task_status', { target: id, payload })); }
+export async function createManualTask(payload) { return unwrap(await supabase.rpc('create_manual_task', { payload })); }
+export async function recordContactAttempt(payload) { return unwrap(await supabase.rpc('record_contact_attempt', { payload })); }
+export async function getContactAttempts(customerId) { return unwrap(await supabase.from('contact_attempts').select('*').eq('customer_id', customerId).order('created_at', { ascending: false }).limit(50)); }
+// Un documento por id con el mismo detalle que los listados (para abrirlo desde tareas).
+export async function getDocumentById(kind, id) {
+  const select = { order: `*,${CUSTOMER_REF},order_items(*),sales(id,sale_number,status)`, quote: `*,${CUSTOMER_REF},quote_items(*)`, sale: `*,${CUSTOMER_REF},sale_items(*),sale_returns(*)` }[kind];
+  const table = { order: 'orders', quote: 'quotes', sale: 'sales' }[kind];
+  if (!select) throw new Error('Documento no válido');
+  return unwrap(await supabase.from(table).select(select).eq('id', id).maybeSingle());
+}
+// "Avísame cuando llegue": la respuesta es la misma exista o no el cliente.
+export async function requestRestockNotice(variantId, name, phone, accepted) {
+  return unwrap(await supabase.rpc('request_restock_notice', { target_variant: variantId, name, phone, accepted }));
+}
+export async function getProductCosts() { return fetchAllPages(() => supabase.from('product_costs').select('product_id,unit_cost,updated_at').order('product_id')); }
+export async function saveProductCost(productId, unitCost) {
+  if (unitCost == null) return unwrap(await supabase.from('product_costs').delete().eq('product_id', productId).select());
+  return unwrap(await supabase.from('product_costs').upsert({ product_id: productId, unit_cost: unitCost }).select().single());
+}
+export async function getStaffRole() { const { data, error } = await supabase.rpc('staff_role'); return error ? 'propietario' : (data || 'propietario'); }
+export async function getPlanStatus() { const { data, error } = await supabase.rpc('plan_status'); return error ? null : data; }
 
 export { supabase };

@@ -4,7 +4,7 @@
 
 La copia local apunta exclusivamente al proyecto `ekepygodvciqnqkrgrsv`. La cadena heredada está fuera de `supabase/migrations` (en `supabase/legacy_readonly/`), la CLI no está vinculada al proyecto viejo y `tools/guard-supabase.ps1` verifica host y ref antes de cualquier operación.
 
-**El esquema todavía no está aplicado en el proyecto remoto** (por eso la tienda muestra “Base de datos pendiente de instalación”). La sesión actual de Supabase CLI pertenece a otra cuenta y no ve `ekepygodvciqnqkrgrsv`; una secret key de Data API no permite migraciones DDL.
+**Estado (15/10/2026):** las 8 migraciones están aplicadas en el proyecto remoto (`node tools/remote-check.mjs`). El sitio publicado aún es la versión anterior; el nuevo está en `deploy/` (ver `docs/LEGAL_LEEME.md` y `docs/APLICAR_MIGRACIONES_CRM.md`). La sesión actual de Supabase CLI pertenece a otra cuenta y no ve `ekepygodvciqnqkrgrsv`; una secret key de Data API no permite migraciones DDL.
 
 ## Migraciones activas
 
@@ -12,6 +12,14 @@ La copia local apunta exclusivamente al proyecto `ekepygodvciqnqkrgrsv`. La cade
 |---|---|
 | `202609280001_bodega_mayorista_clean_base.sql` | Catálogo, configuración, CRM, pedidos, cotizaciones, ventas, RLS, buckets. Sin datos comerciales. |
 | `202609280002_crm_sales_inventory.sql` | Checkout endurecido (límites, abuso, snapshots, dedupe sin sobrescribir), apertura de WhatsApp, pedidos manuales, cotizaciones multilínea y editables, conversión con revisión de precios (error `BM001`), ventas manuales, estados pagada/entregada, devoluciones con decisión de reintegro, cancelación sin doble restauración, variantes con id estable, ajustes de stock trazables, fusión de clientes, edad/cumpleaños en `America/Bogota`, snapshots de cliente y negocio, privilegios mínimos (`anon` sin acceso a tablas privadas ni funciones internas; importes y estados solo vía funciones). |
+| `202609290001_price_tiers.sql` | Precios por volumen (tramos por producto). |
+| `202610130001_delete_admin_quote.sql` | Eliminar cotizaciones nunca convertidas. |
+| `202610140001_crm_privacy_events_identity.sql` | Roles del personal, privacidad por finalidad, colector de eventos (desactivado por defecto), identidad declarada/verificada, relaciones de productos y agregados privados del CRM. Aplicada (15/10/2026). |
+| `202610140002_coupons_offers.sql` | Cupones validados en servidor (reserva, consumo y liberación), ofertas privadas, contactos y checkout con descuento por línea. Aplicada (15/10/2026). |
+| `202610150001_legal_restock_costs.sql` | Aceptación obligatoria y versionada de Términos y Política, avisos de disponibilidad, costos privados y margen. Aplicada (15/10/2026). |
+| `202610140003_tasks_roles_plan.sql` | Tareas "A quién atender hoy", permisos de vendedor y de catálogo, modelo de plan (cobro desactivado). Aplicada (15/10/2026). |
+
+CRM, recomendaciones, ofertas y cupones: `docs/TECNICO_CRM.md`, `docs/GUIA_COMERCIANTE.md`, `docs/AUDITORIA_HITO0.md` y `docs/APLICAR_MIGRACIONES_CRM.md`.
 
 Reglas definidas:
 
@@ -19,7 +27,7 @@ Reglas definidas:
 - **Teléfono**: `3xx…`, `03xx…`, `57 3xx…` y `+57 3xx…` se normalizan a `+573xx…`; otros números internacionales de 8–15 dígitos se guardan con `+`. Un cliente existente nunca se sobrescribe desde el checkout: las diferencias quedan en `orders.customer_conflicts` para que el administrador las aplique.
 - **Ventas**: `solicitud → confirmada` (descuenta stock una vez) `→ pagada/entregada`; `cancelada` restaura una vez; `devuelta` cuando se devuelve todo. Con devoluciones registradas no se permite cancelar.
 - **Consecutivos**: `PED-AAAA-000001`, `COT-AAAA-000001`, `CV-AAAA-000001` por `UPDATE … RETURNING` bloqueante (nunca `count + 1`).
-- **Análisis de cliente** (`js/lib/customer-insights.js`, solo lectura en el navegador): "comprado" son ventas `confirmada/pagada/entregada` netas de devoluciones; la categoría de cada línea es la más específica del producto (subcategoría si existe); la conversión es cotizaciones `convertida` sobre cotizaciones ya cerradas; el segmento (VIP, Recurrente, Nuevo comprador, En riesgo/Por reactivar, Inactivo, Prospecto) combina recencia, frecuencia y el intervalo habitual de compra. Las recomendaciones solo incluyen productos publicados con stock que el cliente no ha comprado, y el mensaje de WhatsApp solo se habilita con autorización promocional vigente.
+- **Análisis de cliente**: contrato en `js/lib/metrics.js` (compra = venta confirmada alguna vez y no cancelada; neto de devoluciones; conversión con numerador y denominador; afinidad 0–100, no probabilidad). Detalle en `docs/TECNICO_CRM.md`.
 
 ## Datos iniciales tras migrar
 
@@ -44,10 +52,13 @@ powershell -ExecutionPolicy Bypass -File .\tools\serve.ps1 -Port 8080
 ## Pruebas
 
 ```powershell
-node .\tools\qa-bodega.mjs                      # estáticas + fechas/teléfonos (9)
+node .\tools\qa-bodega.mjs                      # estáticas, huellas de migraciones, sintaxis ESM e importaciones (13)
+node .\tools\qa-metrics.mjs                     # contrato de métricas y recomendadores (17)
 npm install --no-save --prefix $env:TEMP\pglite @electric-sql/pglite
 $env:PGLITE_DIR="$env:TEMP\pglite"; node .\tools\qa-db.mjs   # Postgres local en memoria (40)
-node .\tools\qa-ui-mock.mjs                     # Chrome headless con Supabase simulado (87)
+node .\tools\qa-db-crm.mjs                      # cupones, eventos, identidad, tareas, permisos (20)
+node .\tools\rollback-crm.mjs --verify; node .\tools\demo-crm.mjs
+node .\tools\qa-ui-mock.mjs                     # Chrome headless con Supabase simulado (211)
 ```
 
 - `qa-db.mjs` aplica ambas migraciones en PGlite (Postgres compilado a WASM) con un entorno que imita Supabase (roles, `auth.uid()`, Storage y privilegios por defecto) y prueba RLS anónima y de un usuario autenticado que no es admin, precio manipulado, teléfonos equivalentes (1 cliente, 2 pedidos), idempotencia, stock insuficiente, confirmación única, cancelación única, devoluciones, transiciones, cotizaciones y cumpleaños.

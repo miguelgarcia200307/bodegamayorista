@@ -21,3 +21,7 @@ output/
 
 # Documentos generados (cotizaciones, facturas): pueden contener datos de clientes
 *.pdf
+
+# Paquete de publicación generado por tools/build-deploy.mjs
+deploy/
+legal/respaldo/

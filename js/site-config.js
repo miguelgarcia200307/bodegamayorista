@@ -156,9 +156,10 @@ export function buildSiteData(settings = {}, { payments = [], deliveries = [] } 
     legalName: siteConfig.legalName || '',
     warrantyText,
     dataPolicyText: realValue(settings.data_policy_text),
-    termsText: siteConfig.policies.terms || realValue(settings.sale_terms),
-    shippingPolicy: siteConfig.policies.shipping || '',
-    returnsPolicy: siteConfig.policies.returns || '',
+    termsText: realValue(settings.terms_text) || siteConfig.policies.terms || '',
+    termsVersion: realValue(settings.terms_version),
+    shippingPolicy: realValue(settings.shipping_policy_text) || siteConfig.policies.shipping || '',
+    returnsPolicy: realValue(settings.returns_policy_text) || siteConfig.policies.returns || '',
     faq: siteConfig.faq.filter(item => item?.question && item?.answer),
     shipsNationwide: Boolean(siteConfig.shipsNationwide),
     hasPhysicalStore: Boolean(siteConfig.hasPhysicalStore && city),
@@ -175,15 +176,20 @@ export function buildSiteData(settings = {}, { payments = [], deliveries = [] } 
 }
 
 function helpTopics(data) {
+  // `text`: texto plano del panel (se formatea en ayuda.html); `items`: tarjetas
+  // nombre + detalle; `subtitle`: línea de apoyo bajo el título.
   const topics = [];
-  const shippingBody = [data.shippingPolicy, ...data.deliveries.map(item => `${item.name}${item.instructions ? `: ${item.instructions}` : ''}`), ...data.shippingEstimates.map(item => `${item.city}: ${item.time}`)].filter(Boolean);
-  if (shippingBody.length) topics.push({ slug: 'envios', title: 'Envíos y entregas', body: shippingBody });
-  if (data.warrantyText) topics.push({ slug: 'garantia', title: 'Garantía', body: [data.warrantyText] });
-  if (data.returnsPolicy) topics.push({ slug: 'cambios', title: 'Cambios y devoluciones', body: [data.returnsPolicy] });
-  if (data.payments.length) topics.push({ slug: 'pagos', title: 'Formas de pago', body: data.payments.map(item => `${item.name}${item.instructions ? `: ${item.instructions}` : ''}`) });
-  if (data.faq.length) topics.push({ slug: 'preguntas', title: 'Preguntas frecuentes', faq: data.faq });
-  if (data.termsText) topics.push({ slug: 'terminos', title: 'Términos y condiciones', body: [data.termsText] });
-  if (data.dataPolicyText) topics.push({ slug: 'privacidad', title: 'Privacidad y Habeas Data', subtitle: 'Tratamiento de datos personales conforme a la Ley 1581 de 2012.', body: [data.dataPolicyText] });
+  const shippingItems = [
+    ...data.deliveries.map(item => ({ title: item.name, text: item.instructions })),
+    ...data.shippingEstimates.map(item => ({ title: item.city, text: item.time }))
+  ];
+  if (data.shippingPolicy || shippingItems.length) topics.push({ slug: 'envios', title: 'Envíos y entregas', icon: 'truck', text: data.shippingPolicy, items: shippingItems });
+  if (data.warrantyText) topics.push({ slug: 'garantia', title: 'Garantía', icon: 'shield', text: data.warrantyText });
+  if (data.returnsPolicy) topics.push({ slug: 'cambios', title: 'Cambios y devoluciones', icon: 'returns', text: data.returnsPolicy });
+  if (data.payments.length) topics.push({ slug: 'pagos', title: 'Formas de pago', icon: 'card', items: data.payments.map(item => ({ title: item.name, text: item.instructions, logo: item.logo })) });
+  if (data.faq.length) topics.push({ slug: 'preguntas', title: 'Preguntas frecuentes', icon: 'chat', faq: data.faq });
+  if (data.termsText) topics.push({ slug: 'terminos', title: 'Términos y condiciones', icon: 'layers', subtitle: data.termsVersion ? `Versión ${data.termsVersion}` : '', text: data.termsText, document: true });
+  if (data.dataPolicyText) topics.push({ slug: 'privacidad', title: 'Privacidad y Habeas Data', subtitle: 'Tratamiento de datos personales conforme a la Ley 1581 de 2012.', text: data.dataPolicyText, document: true });
   return topics;
 }
 

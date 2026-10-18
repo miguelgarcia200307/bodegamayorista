@@ -4,15 +4,21 @@
 import { createStorefrontOrder, getDeliveryMethods, getPaymentMethods, markOrderWhatsappOpened } from '../lib/api.js';
 import { loadSettings } from '../components/layout.js';
 import { toast } from '../components/toast.js';
+import { openModal } from '../components/modal.js';
 import { icon } from '../components/icons.js';
 import { cleanLabel, realValue } from '../site-config.js';
 import { $, debounce, emptyState, escapeHtml, formatMoney, localAsset, paymentInitials } from '../lib/helpers.js';
+import { formatLegal } from '../lib/legal-format.js';
 import { cartPricing } from '../lib/pricing.js';
 import { clearCart, getCart } from '../lib/store.js';
+import { checkCoupon, clearStoredCoupon, couponMessage, getStoredCoupon } from '../lib/coupon-client.js';
+import { getConsent, track, visitorCredentials } from '../lib/privacy.js';
 
 const DRAFT_KEY = 'bodega_mayorista_fc_checkout_v1';
 const REQUEST_KEY = 'bodega_mayorista_fc_checkout_request_v1';
 let submitting = false;
+let legalReady = false;
+let coupon = null; // última validación del servidor para el código guardado
 
 export async function initCheckout() {
   document.querySelectorAll('.checkout-submit svg').forEach(svg => { svg.outerHTML = icon('whatsapp', { size: 20 }); });
@@ -29,24 +35,44 @@ export async function initCheckout() {
   try { [deliveries, payments] = await Promise.all([getDeliveryMethods(), getPaymentMethods()]); }
   catch (error) { console.warn('No se cargaron los métodos de entrega o pago:', error); }
 
-  const policy = realValue(settings.data_policy_text);
-  if (policy) {
+  // Aceptación legal obligatoria: versiones vigentes que se envían con el pedido.
+  const legal = { terms: realValue(settings.terms_text), termsVersion: realValue(settings.terms_version), policy: realValue(settings.data_policy_text), policyVersion: realValue(settings.data_policy_version) };
+  legalReady = Boolean(legal.terms && legal.termsVersion && legal.policy && legal.policyVersion);
+  $('#legal-versions').textContent = legalReady ? `(Términos ${legal.termsVersion} · Política ${legal.policyVersion})` : '';
+  if (!legalReady) renderStatus('error', 'La tienda está publicando sus términos de venta. Mientras tanto escríbenos por WhatsApp para hacer tu pedido.', false);
+  document.querySelectorAll('[data-legal-open]').forEach(link => link.addEventListener('click', event => {
+    const isTerms = link.dataset.legalOpen === 'terms';
+    const text = isTerms ? legal.terms : legal.policy;
+    if (!text) return; // sin texto publicado, el enlace abre la página de ayuda
+    event.preventDefault();
+    const body = document.createElement('div');
+    body.className = 'legal-text';
+    body.innerHTML = formatLegal(text, { dropTitle: false });
+    openModal({ title: isTerms ? 'Términos y condiciones' : 'Política de tratamiento de datos personales', content: body, trigger: link, className: 'modal--wide modal--legal' });
+  }));
+  if (legal.policy) {
     $('#data-policy').hidden = false;
-    $('#data-policy-text').textContent = `${policy}${realValue(settings.data_policy_version) ? ` (versión ${settings.data_policy_version})` : ''}`;
+    $('#data-policy-text').textContent = `${legal.policy}${legal.policyVersion ? ` (versión ${legal.policyVersion})` : ''}`;
   }
   const marketing = realValue(settings.marketing_consent_text);
   if (marketing) $('#marketing-consent-text').textContent = marketing;
+  // El texto describe exactamente lo que ocurre: con analítica autorizada solo se relaciona
+  // la navegación de ESTA visita con el pedido; sin ella, nada.
+  if (getConsent().analytics) $('#data-policy-summary').textContent = 'Usaremos tus datos para gestionar este pedido y contactarte por WhatsApp. Como autorizaste la analítica, relacionaremos con este pedido solo la navegación de esta visita.';
+  track('checkout_started', { properties: { items: cart.length } });
   renderDeliveryMethods(deliveries, draft.deliveryMethodId);
   renderPaymentMethods(payments, draft.paymentMethodId);
   restoreDraft(form, draft);
   updateDelivery(form, deliveries);
   renderSummary(cart, selectedDelivery(form, deliveries));
+  refreshCoupon(form, deliveries);
   bindDraftPersistence(form, deliveries);
   bindStickyAction();
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (submitting || !validateForm(form, deliveries, payments, true)) return;
+    if (!legalReady) { renderStatus('error', 'La tienda está publicando sus términos de venta. Escríbenos por WhatsApp para hacer tu pedido.'); return; }
     if (!settings.whatsapp) {
       renderStatus('error', 'Por ahora no podemos recibir pedidos en línea. Escríbenos directamente para ayudarte.');
       return;
@@ -61,7 +87,12 @@ export async function initCheckout() {
         birth_date: customer.birthDate || null, delivery_method_id: customer.deliveryMethodId,
         payment_method_id: customer.paymentMethodId, notes: customer.notes,
         marketing_consent: customer.marketingConsent,
-        items: cart.map(item => ({ variant_id: item.variant_id, quantity: Number(item.quantity) }))
+        items: cart.map(item => ({ variant_id: item.variant_id, quantity: Number(item.quantity) })),
+        // Solo el código y el descuento que el cliente vio; el servidor recalcula todo.
+        ...(coupon?.status === 'valido' ? { coupon_code: coupon.code, expected_discount: Number(coupon.discount_total) } : {}),
+        visitor: visitorCredentials(),
+        // Prueba de aceptación: el servidor verifica que sean las versiones vigentes.
+        legal: { accepted: form.elements.legalAccept.checked, terms_version: settings.terms_version, data_policy_version: settings.data_policy_version }
       }, requestKey);
       const order = Array.isArray(response) ? response[0] : response;
       if (!order?.order_number) throw new Error('No recibimos el número del pedido.');
@@ -70,6 +101,8 @@ export async function initCheckout() {
       const url = `https://wa.me/${encodeURIComponent(whatsapp)}?text=${encodeURIComponent(buildMessage(order, customer, settings))}`;
       saveDraft(customer);
       sessionStorage.removeItem(REQUEST_KEY);
+      if (coupon?.status === 'valido') clearStoredCoupon();
+      track('whatsapp_link_prepared', { properties: { context: 'checkout' } });
       if (settings.checkout_behavior === 'clear') clearCart();
       showConfirmation(order, url);
       // Solo deja constancia de que se preparó el enlace; no prueba que el mensaje se envió.
@@ -77,6 +110,23 @@ export async function initCheckout() {
       setTimeout(() => { location.href = url; }, 900);
     } catch (error) {
       console.error(error);
+      if (['BM030', 'BM031'].includes(error?.code)) {
+        sessionStorage.removeItem(REQUEST_KEY);
+        renderStatus('error', error.code === 'BM031' ? 'Los términos o la política de datos se actualizaron. Recarga la página, revísalos y acéptalos de nuevo.' : String(error.message));
+        setCheckoutLoading(false); submitting = false;
+        return;
+      }
+      if (['BM010', 'BM011'].includes(error?.code)) {
+        // El cupón cambió o dejó de aplicar: se explica y el cliente decide; nunca se envía
+        // un importe distinto sin que lo vea.
+        sessionStorage.removeItem(REQUEST_KEY);
+        coupon = await checkCoupon(getCart(), getStoredCoupon(), selectedDelivery(form, deliveries)?.id || null);
+        renderSummary(getCart(), selectedDelivery(form, deliveries));
+        renderStatus('error', error.code === 'BM011' ? 'El descuento de tu código cambió. Revisa el nuevo total y vuelve a confirmar.' : `Tu código ya no aplica: ${couponMessage(coupon && coupon.status !== 'valido' ? coupon : { status: error.details || error.detail || 'no_valido' })} Puedes quitarlo y continuar.`);
+        setCheckoutLoading(false);
+        submitting = false;
+        return;
+      }
       renderStatus('error', `${String(error?.message || 'No pudimos registrar el pedido.')} Tus datos y tu carrito siguen guardados.`);
       toast('No pudimos registrar el pedido. Revisa los datos e intenta de nuevo.', 'error', 6500);
       setCheckoutLoading(false);
@@ -97,11 +147,12 @@ function showConfirmation(order, url) {
     <h1>Tu pedido ${escapeHtml(order.order_number)} está listo</h1>
     <p>Te llevamos a WhatsApp para confirmarlo. Solo tienes que enviar el mensaje.</p>
     <p class="confirmation-card__total">Total: <strong>${formatMoney(order.total)}</strong></p>
-    <a class="btn btn--whatsapp btn--block" href="${escapeHtml(url)}">${icon('whatsapp', { size: 20 })}<span>Abrir WhatsApp</span></a>
+    <a class="btn btn--whatsapp btn--block" href="${escapeHtml(url)}" data-wa-confirm>${icon('whatsapp', { size: 20 })}<span>Abrir WhatsApp</span></a>
     <p class="field__hint">¿No se abrió automáticamente? Usa el botón de arriba.</p>
     <a class="btn--tertiary" href="index.html">Volver a la tienda</a>
   </div>`;
   scrollTo({ top: 0 });
+  root.querySelector('[data-wa-confirm]').addEventListener('click', () => track('whatsapp_link_clicked', { properties: { context: 'checkout' } }));
   root.querySelector('h1').setAttribute('tabindex', '-1');
   root.querySelector('h1').focus();
 }
@@ -129,7 +180,7 @@ function bindDraftPersistence(form, deliveries) {
   form.addEventListener('input', event => { clearFieldError(event.target.name); persist(); });
   form.addEventListener('change', event => {
     clearFieldError(event.target.name);
-    if (event.target.name === 'delivery') { updateDelivery(form, deliveries); renderSummary(getCart(), selectedDelivery(form, deliveries)); }
+    if (event.target.name === 'delivery') { updateDelivery(form, deliveries); renderSummary(getCart(), selectedDelivery(form, deliveries)); refreshCoupon(form, deliveries); }
     persist();
   });
   // Validación en línea al salir de cada campo.
@@ -159,7 +210,8 @@ function fieldErrors(form, deliveries, payments) {
     delivery: method ? '' : deliveries.length ? 'Elige cómo quieres recibir tu pedido.' : 'No hay métodos de entrega disponibles.',
     city: (method?.requires_city || method?.requires_address) && values.city.length < 2 ? 'Escribe tu ciudad y departamento.' : '',
     address: method?.requires_address && values.address.length < 5 ? 'Escribe la dirección completa de entrega.' : '',
-    payment: payments.some(item => item.id === values.paymentMethodId) || !payments.length && values.paymentMethodId ? '' : payments.length ? 'Elige tu método de pago preferido.' : 'No hay métodos de pago disponibles.'
+    payment: payments.some(item => item.id === values.paymentMethodId) || !payments.length && values.paymentMethodId ? '' : payments.length ? 'Elige tu método de pago preferido.' : 'No hay métodos de pago disponibles.',
+    legalAccept: form.elements.legalAccept?.checked ? '' : 'Debes aceptar los Términos y condiciones y la Política de tratamiento de datos para enviar el pedido.'
   };
 }
 
@@ -182,6 +234,7 @@ function setFieldError(form, name, message) {
   if (error) error.textContent = message;
   const target = fieldTarget(form, name);
   if (['delivery', 'payment'].includes(name)) target?.closest('.checkout-choice-group')?.classList.toggle('has-error', Boolean(message));
+  else if (name === 'legalAccept') target?.closest('.check-field')?.classList.toggle('has-error', Boolean(message));
   else target?.closest('.field')?.classList.toggle('has-error', Boolean(message));
   target?.setAttribute('aria-invalid', String(Boolean(message)));
 }
@@ -205,17 +258,29 @@ function normalizedFormData(form, deliveries) {
   };
 }
 function readDraft() { try { return JSON.parse(localStorage.getItem(DRAFT_KEY)) || {}; } catch { return {}; } }
-function saveDraft(value) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(value)); } catch { /* sin almacenamiento */ } }
+// El borrador guarda datos de contacto, nunca autorizaciones (se deciden en cada pedido).
+function saveDraft(value) { try { const { marketingConsent, ...rest } = value; void marketingConsent; localStorage.setItem(DRAFT_KEY, JSON.stringify(rest)); } catch { /* sin almacenamiento */ } }
 function restoreDraft(form, draft) {
   for (const name of ['fullName', 'phone', 'city', 'address', 'birthDate', 'notes']) if (typeof draft[name] === 'string' && form.elements[name]) form.elements[name].value = draft[name];
-  if (draft.marketingConsent && form.elements.marketingConsent) form.elements.marketingConsent.checked = true;
 }
 function currentRequestKey() { let key = sessionStorage.getItem(REQUEST_KEY); if (!key) { key = crypto.randomUUID(); sessionStorage.setItem(REQUEST_KEY, key); } return key; }
+
+async function refreshCoupon(form, deliveries) {
+  if (!getStoredCoupon()) { coupon = null; return; }
+  const request = (refreshCoupon.seq = (refreshCoupon.seq || 0) + 1);
+  const result = await checkCoupon(getCart(), getStoredCoupon(), selectedDelivery(form, deliveries)?.id || null);
+  if (request !== refreshCoupon.seq) return;
+  coupon = result;
+  renderSummary(getCart(), selectedDelivery(form, deliveries));
+}
 
 function renderSummary(cart, delivery) {
   const pricing = cartPricing(cart);
   const deliveryCost = Number(delivery?.base_cost || 0);
-  const total = pricing.subtotal + deliveryCost;
+  const valid = coupon?.status === 'valido';
+  const discount = valid ? Number(coupon.discount_total) : 0;
+  const subtotal = valid ? Number(coupon.subtotal) : pricing.subtotal;
+  const total = subtotal - discount + deliveryCost;
   const lines = cart.map(item => {
     const line = pricing.lines.get(item.line_id);
     const options = [item.color, item.size].filter(value => value && !/^única$/i.test(String(value).trim())).join(' · ');
@@ -226,7 +291,11 @@ function renderSummary(cart, delivery) {
   $('#checkout-mobile-count').textContent = `${pricing.units} producto${pricing.units === 1 ? '' : 's'}`;
   $('#checkout-mobile-total').textContent = formatMoney(total);
   $('#checkout-sticky-total').textContent = formatMoney(total);
-  $('#checkout-totals').innerHTML = `<div><dt>Productos</dt><dd>${formatMoney(pricing.subtotal + pricing.totalSavings)}</dd></div>${pricing.totalSavings > 0 ? `<div class="is-saving"><dt>Ahorro</dt><dd>−${formatMoney(pricing.totalSavings)}</dd></div>` : ''}<div><dt>Envío</dt><dd class="summary__muted">${delivery ? (deliveryCost ? formatMoney(deliveryCost) : 'Se confirma por WhatsApp') : 'Elige la entrega'}</dd></div><div class="summary__total"><dt>Total</dt><dd>${formatMoney(total)}</dd></div>`;
+  const couponRow = getStoredCoupon() ? (valid
+    ? `<div class="is-saving"><dt>Código ${escapeHtml(coupon.code)}</dt><dd>−${formatMoney(discount)}</dd></div>`
+    : `<div class="checkout-coupon-issue"><dt>Código ${escapeHtml(getStoredCoupon())}</dt><dd>${coupon ? escapeHtml(couponMessage(coupon)) : 'Verificando…'} ${coupon ? '<button class="btn--tertiary" type="button" data-drop-coupon>Quitar código</button>' : ''}</dd></div>`) : '';
+  $('#checkout-totals').innerHTML = `<div><dt>Productos</dt><dd>${formatMoney(pricing.subtotal + pricing.totalSavings)}</dd></div>${pricing.totalSavings > 0 ? `<div class="is-saving"><dt>Ahorro</dt><dd>−${formatMoney(pricing.totalSavings)}</dd></div>` : ''}${couponRow}<div><dt>Envío</dt><dd class="summary__muted">${delivery ? (deliveryCost ? formatMoney(deliveryCost) : 'Se confirma por WhatsApp') : 'Elige la entrega'}</dd></div><div class="summary__total"><dt>Total</dt><dd>${formatMoney(total)}</dd></div>`;
+  $('#checkout-totals').querySelector('[data-drop-coupon]')?.addEventListener('click', () => { clearStoredCoupon(); coupon = null; renderSummary(getCart(), delivery); renderStatus('info', 'Quitamos el código. Revisa el total antes de confirmar.'); });
 }
 
 // Mensaje de WhatsApp: saludo, número de pedido, productos con variante, cantidad y
@@ -239,11 +308,14 @@ function buildMessage(order, customer, settings) {
     `*Pedido ${order.order_number}*`,
     ''
   ];
-  (order.items || []).forEach(item => {
+  const products = (order.items || []).filter(item => !item.coupon);
+  const couponInfo = (order.items || []).find(item => item.coupon);
+  products.forEach(item => {
     const options = Object.values(item.options || {}).filter(Boolean).join(' · ');
     lines.push(`• ${item.name}${options ? ` (${options})` : ''}`);
-    lines.push(`   ${item.quantity} × ${formatMoney(item.unit_price ?? (Number(item.line_total) / Number(item.quantity || 1)))} = ${formatMoney(item.line_total)}`);
+    lines.push(`   ${item.quantity} × ${formatMoney(item.unit_price ?? (Number(item.line_total) / Number(item.quantity || 1)))}${Number(item.discount) ? ` − ${formatMoney(item.discount)} (código)` : ''} = ${formatMoney(item.line_total)}`);
   });
+  if (couponInfo) lines.push('', `Código ${couponInfo.coupon}: −${formatMoney(couponInfo.discount_total)}`);
   lines.push('', `*Total: ${formatMoney(order.total)}*`, '', '*Datos de entrega*', `Nombre: ${customer.fullName}`, `Celular: ${customer.phone}`, `Entrega: ${customer.deliveryName}`);
   if (customer.city) lines.push(`Ciudad: ${customer.city}`);
   if (customer.address) lines.push(`Dirección: ${customer.address}`);

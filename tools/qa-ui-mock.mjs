@@ -89,16 +89,38 @@ const quotes = [{ id: 'q1000000-0000-4000-8000-000000000001', quote_number: 'COT
 const saleItems = Array.from({ length: 60 }, (_, i) => item(i));
 const sales = [{ id: 's1000000-0000-4000-8000-000000000001', sale_number: 'CV-2026-000001', customer_id: customerRef.id, source: 'pedido', status: 'confirmada', payment_method: 'Transferencia (declarado)', subtotal: 9000000, discount_total: 75000, delivery_cost: 12000, total: 8937000, notes: 'Entrega coordinada por WhatsApp.', terms_snapshot: null, warranty_snapshot: null, customer_snapshot: { full_name: 'Cliente Prueba', phone: '300 123 4567', city: 'Ciudad Prueba' }, business_snapshot: { business_name: 'Bodega Mayorista F.C.', tagline: 'Tecnología, calidad y confianza' }, stock_applied_at: now, confirmed_at: now, created_at: now, updated_at: now, customers: customerRef, sale_items: saleItems, sale_returns: [] },
   { id: 's2000000-0000-4000-8000-000000000002', sale_number: 'CV-2026-000002', customer_id: customerRef.id, source: 'presencial', status: 'solicitud', payment_method: null, subtotal: 125000.5, discount_total: 0, delivery_cost: 0, total: 125000.5, notes: null, customer_snapshot: {}, business_snapshot: {}, stock_applied_at: null, created_at: now, updated_at: now, customers: customerRef, sale_items: [item(1)], sale_returns: [] }];
-const settings = { id: 1, business_name: 'Bodega Mayorista F.C.', tagline: 'Tecnología, calidad y confianza', whatsapp: '573001112233', phone: null, email: null, address: null, city: null, schedule: null, instagram: null, facebook: null, tiktok: null, maps_url: null, logo_url: null, tax_id: null, default_sort: 'featured', checkout_behavior: 'keep', data_policy_text: null, data_policy_version: null, marketing_consent_text: null, marketing_consent_version: null, quote_terms: null, sale_terms: null, warranty_text: null, birthday_message: 'Hola {nombre}, te deseamos un feliz cumpleaños de parte de Bodega Mayorista F.C.', announcement_enabled: true, announcement_mode: 'static', announcement_static_text: 'Bodega Mayorista F.C. · Tecnología, calidad y confianza', announcement_interval_seconds: 5, announcement_messages: [], banner_enabled: false, banner_interval_seconds: 5, price_tiers_enabled: true, updated_at: now };
+const settings = { id: 1, terms_text: 'TÉRMINOS Y CONDICIONES DE PRUEBA\n1. Quién vende.', terms_version: 'tyc-prueba-1', data_policy_text: 'POLÍTICA DE DATOS DE PRUEBA\n1. Responsable.', data_policy_version: 'pd-prueba-1', business_name: 'Bodega Mayorista F.C.', tagline: 'Tecnología, calidad y confianza', whatsapp: '573001112233', phone: null, email: null, address: null, city: null, schedule: null, instagram: null, facebook: null, tiktok: null, maps_url: null, logo_url: null, tax_id: null, default_sort: 'featured', checkout_behavior: 'keep', marketing_consent_text: null, marketing_consent_version: null, quote_terms: null, sale_terms: null, warranty_text: null, birthday_message: 'Hola {nombre}, te deseamos un feliz cumpleaños de parte de Bodega Mayorista F.C.', announcement_enabled: true, announcement_mode: 'static', announcement_static_text: 'Bodega Mayorista F.C. · Tecnología, calidad y confianza', announcement_interval_seconds: 5, announcement_messages: [], banner_enabled: false, banner_interval_seconds: 5, price_tiers_enabled: true, updated_at: now };
 const tables = {
   site_settings: [settings], brands: [brand], categories: [category, childCategory], products, homepage_banners: [], product_price_tiers: priceTiers,
   payment_methods: [{ id: 'pm1', name: 'Pago de prueba', instructions: null, logo_url: null, active: true, sort_order: 1 }],
   delivery_methods: [{ id: 'dm1', name: 'Retiro de prueba', instructions: null, requires_city: false, requires_address: false, base_cost: 0, active: true, sort_order: 1 }],
   product_colors: products.flatMap(p => p.product_colors), product_sizes: products.flatMap(p => p.product_sizes),
   product_variants: products.flatMap(p => p.product_variants.map(v => ({ ...v, product_id: p.id }))), product_categories: products.map(p => ({ product_id: p.id, category_id: p.product_categories[0].category_id })),
-  admins: [{ user_id: 'a1000000-0000-4000-8000-00000000000a' }], customers, orders, quotes, sales
+  admins: [{ user_id: 'a1000000-0000-4000-8000-00000000000a', role: 'propietario' }], customers, orders, quotes, sales,
+  product_relationships: [{ id: 'r1', source_type: 'product', source_id: products[1].id, target_type: 'product', target_id: products[3].id, kind: 'compatible_con', strength: 1, reposition_days: null, note: 'Cable compatible verificado', active: true }],
+  customer_tasks: [{ id: 't1', customer_id: 'u1000000-0000-4000-8000-000000000001', kind: 'pedido_pendiente', dedupe_key: 'pedido:o1', title: 'Atender el pedido PED-2026-000001', objective: 'Confirmar entrega y pago.', evidence: [{ label: 'Pedido registrado', date: bogotaToday, kind: 'observado' }], priority: 90, priority_reason: { urgencia: 'Pedido sin atender' }, promotional: false, status: 'pendiente', due_at: bogotaToday, rule_version: 'tareas-v1', source_type: 'order', source_id: 'o1000000-0000-4000-8000-000000000001', created_at: now, customers: { id: 'u1000000-0000-4000-8000-000000000001', full_name: 'Cliente Prueba', phone_original: '300 123 4567', phone_normalized: '+573001234567' } }],
+  customer_offers: [], contact_attempts: [], identity_links: [], identity_verifications: [], coupons: [{ id: 'c1000000-0000-4000-8000-000000000001', code: 'BIENVENIDO10', name: 'Bienvenida clientes nuevos', kind: 'porcentaje', value: 10, max_discount: 50000, min_eligible: 100000, stacking: 'sobre_precio_vigente', starts_at: null, ends_at: new Date(Date.now() + 5 * 86400000).toISOString(), max_uses_total: 20, max_uses_per_customer: 1, audience: 'publico', customer_id: null, reservation_hours: 72, release_on_cancel: true, release_on_full_return: false, active: true, rules_version: 'cupones-v1', created_at: now, coupon_scopes: [], coupon_uses: [{ id: 'cu1', status: 'consumida', discount_total: 45000, reserved_at: now, expires_at: new Date(Date.now() + 2 * 86400000).toISOString(), consumed_at: now, released_at: null, order_id: null, sale_id: null }, { id: 'cu2', status: 'reservada', discount_total: 20000, reserved_at: now, expires_at: new Date(Date.now() + 2 * 86400000).toISOString(), consumed_at: null, released_at: null, order_id: null, sale_id: null }] }, { id: 'c1000000-0000-4000-8000-000000000002', code: 'OF-PRUEBA01', name: 'Oferta para Cliente Prueba · Nevera', kind: 'valor_fijo', value: 80000, max_discount: null, min_eligible: 0, stacking: 'solo_precio_regular', starts_at: null, ends_at: new Date(Date.now() + 20 * 86400000).toISOString(), max_uses_total: 1, max_uses_per_customer: 1, audience: 'portador', customer_id: 'u1000000-0000-4000-8000-000000000001', reservation_hours: 72, release_on_cancel: true, release_on_full_return: false, active: true, rules_version: 'cupones-v1', created_at: now, coupon_scopes: [], coupon_uses: [] }], maintenance_runs: [], product_costs: [], restock_requests: []
 };
 const intercepted = [];
+// Simulación de las funciones nuevas (cupones, privacidad y CRM). Nada sale a la red.
+const privacyCalls = { register: 0, events: [] };
+const restockCalls = [];
+const offerCalls = [];
+function mockCoupon(body) {
+  const code = String(body.code || '').trim().toUpperCase();
+  if (code === 'CAIDO') return { status: 503, body: { message: 'Servicio no disponible' } };
+  if (code === 'VENCIDO') return { status: 200, body: { status: 'vencido', code, ends_at: '2026-01-01T00:00:00Z' } };
+  if (code !== 'PRUEBA10') return { status: 200, body: { status: 'no_valido' } };
+  const lines = (body.cart_items || []).map((line, index) => {
+    const product = products.find(item => item.product_variants.some(variant => variant.id === line.variant_id));
+    const unit = tierPrice(product, Number(line.quantity));
+    return { line_no: index + 1, variant_id: line.variant_id, product_id: product.id, product_name: product.name, quantity: Number(line.quantity), unit_price: unit, gross: unit * Number(line.quantity), eligible: true, discount: 0, line_total: unit * Number(line.quantity) };
+  });
+  const subtotal = lines.reduce((sum, line) => sum + line.gross, 0);
+  const discount = Math.round(subtotal * 0.1);
+  lines[0].discount = discount; lines[0].line_total -= discount;
+  return { status: 200, body: { status: 'valido', code, name: 'Prueba', kind: 'porcentaje', value: 10, subtotal, eligible_subtotal: subtotal, discount_total: discount, total: subtotal - discount, lines, ends_at: null } };
+}
 const whatsappVisits = [];
 function mockResponse(url, method, headers, postData = '') {
   const parsed = new URL(url);
@@ -112,6 +134,27 @@ function mockResponse(url, method, headers, postData = '') {
     return { status: 200, body: products.filter(item => item.status === 'published' && item.name.toLowerCase().includes(term)).map(item => ({ ...item, image_url: null, brand_name: item.brands?.name })) };
   }
   if (path.endsWith('/rpc/create_storefront_order')) return { status: 200, body: mockOrder(JSON.parse(postData || '{}').payload || {}) };
+  if (path.endsWith('/rpc/validate_cart_coupon')) return mockCoupon(JSON.parse(postData || '{}'));
+  if (path.endsWith('/rpc/register_visitor')) { privacyCalls.register += 1; return { status: 200, body: [{ visitor_id: crypto.randomUUID(), visitor_secret: 'a'.repeat(64) }] }; }
+  if (path.endsWith('/rpc/set_visitor_consent')) return { status: 200, body: true };
+  if (path.endsWith('/rpc/track_events')) { const body = JSON.parse(postData || '{}'); privacyCalls.events.push(...(body.events || [])); return { status: 200, body: [{ accepted: (body.events || []).length, rejected: 0 }] }; }
+  if (path.endsWith('/rpc/request_restock_notice')) { restockCalls.push(JSON.parse(postData || '{}')); return { status: 200, body: true }; }
+  if (path.endsWith('/rpc/staff_role')) return { status: 200, body: 'propietario' };
+  if (path.endsWith('/rpc/plan_status')) return { status: 200, body: { status: 'sin_plan', enforcement_enabled: false, message: 'Plan no configurado por el operador del servicio.' } };
+  if (path.endsWith('/rpc/crm_customer_ranking')) return { status: 200, body: [{ position_rank: 1, total_customers: 2, share_bp: 6000, kept_cents: 900000000 }] };
+  if (path.endsWith('/rpc/generate_customer_tasks')) return { status: 200, body: 0 };
+  if (path.endsWith('/rpc/preview_offer')) {
+    const { items = [], benefit = {} } = JSON.parse(postData || '{}');
+    const lines = items.map(item => ({ variant_id: item.variant_id, quantity: item.quantity, product_name: 'Producto', unit_price: 100000, regular_unit: 100000, discount: benefit.kind === 'porcentaje' ? 100000 * item.quantity * benefit.value / 100 : 0, line_total: 100000 * item.quantity * (1 - (benefit.kind === 'porcentaje' ? benefit.value / 100 : 0)), available: true }));
+    const subtotal = lines.reduce((sum, line) => sum + line.unit_price * line.quantity, 0); const discount = lines.reduce((sum, line) => sum + line.discount, 0);
+    return { status: 200, body: { status: 'valido', unavailable_lines: 0, subtotal, discount_total: discount, lines, margin_available: false, margin_reason: 'faltan costos' } };
+  }
+  if (path.endsWith('/rpc/create_customer_offer')) {
+    const { payload } = JSON.parse(postData || '{}'); offerCalls.push(payload);
+    const items = (payload.items || []).map(item => ({ product_name: 'Producto', quantity: item.quantity, gross: 100000 * item.quantity, discount: 10000 * item.quantity, line_total: 90000 * item.quantity }));
+    return { status: 200, body: { offer: { id: 'of000000-0000-4000-8000-000000000001', items, totals: { total: items.reduce((sum, item) => sum + item.line_total, 0), discount_total: items.reduce((sum, item) => sum + item.discount, 0) } }, coupon: { code: 'OF-PRUEBA7', ends_at: payload.benefit?.ends_at } } };
+  }
+  if (path.endsWith('/rpc/update_customer_offer')) return { status: 200, body: { id: 'of000000-0000-4000-8000-000000000001' } };
   if (path.startsWith('/rest/v1/rpc/')) return { status: 200, body: path.endsWith('validate_cart') ? [] : [] };
   if (path.startsWith('/rest/v1/')) {
     // Filtros PostgREST básicos de nivel superior: col=eq.x, col=in.(a,b), col=is.null.
@@ -188,6 +231,9 @@ async function screenshot(name) {
 }
 const results = []; const failures = [];
 function expect(name, condition, detail = '') { (condition ? results : failures).push(`${condition ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`); }
+// Si un paso aborta, se informan las verificaciones fallidas acumuladas hasta ese punto.
+const reportAbort = error => { console.log(failures.join(String.fromCharCode(10))); console.log([...new Set(errors)].slice(0, 15).join(String.fromCharCode(10))); console.error(error); process.exit(1); };
+process.on('uncaughtException', reportAbort); process.on('unhandledRejection', reportAbort);
 
 // --- Vitrina -------------------------------------------------------------------------
 // Datos de negocio realistas para la tienda (se restauran antes de las pruebas del panel).
@@ -344,10 +390,21 @@ data = await evaluate(`({ qty: document.querySelector('.cart-item input')?.value
 expect('flujo: cambiar cantidad persiste al recargar', String(data.qty) === '2' && data.stored === 2, `input ${data.qty}, guardado ${data.stored}`);
 expect('flujo: botón “Continuar pedido” disponible', data.continue);
 await visit('checkout.html');
+const ordersBeforeLegal = lastOrderPayload;
 await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.elements.fullName.value = 'Cliente Prueba'; f.elements.phone.value = '300 123 4567';
   f.querySelector('[name="delivery"]').click(); f.querySelector('[name="payment"]').click();
   f.dispatchEvent(new Event('input', { bubbles: true })); f.requestSubmit(); })()`);
+await delay(900);
+data = await evaluate(`({ error: document.querySelector('#legalAccept-error')?.textContent || '', checked: document.querySelector('#legal-accept')?.checked, marketing: document.querySelector('#marketing-consent')?.checked, versions: document.querySelector('#legal-versions')?.textContent || '' })`);
+expect('checkout: sin aceptar Términos y Política no se envía el pedido', lastOrderPayload === ordersBeforeLegal && /Debes aceptar/.test(data.error) && data.checked === false, JSON.stringify(data));
+expect('checkout: la autorización promocional es opcional y no viene marcada', data.marketing === false && /tyc-prueba-1/.test(data.versions), JSON.stringify(data));
+await evaluate(`document.querySelector('[data-legal-open="terms"]').click()`); await delay(400);
+data = await evaluate(`({ title: document.querySelector('.modal--legal h2')?.textContent || '', text: document.querySelector('.modal--legal .legal-text')?.textContent || '' })`);
+expect('checkout: los Términos se leen completos sin salir del pedido', /Términos y condiciones/.test(data.title) && /TÉRMINOS Y CONDICIONES DE PRUEBA/.test(data.text), data.title);
+await evaluate(`document.querySelector('.modal--legal .modal__close').click()`); await delay(300);
+await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.elements.legalAccept.checked = true; f.requestSubmit(); })()`);
 await delay(4500);
+expect('pedido: envía la aceptación con las versiones vigentes', lastOrderPayload?.legal?.accepted === true && lastOrderPayload.legal.terms_version === 'tyc-prueba-1' && lastOrderPayload.legal.data_policy_version === 'pd-prueba-1', JSON.stringify(lastOrderPayload?.legal));
 const waUrl = whatsappVisits.filter(url => url.includes('text=')).at(-1) || '';
 const waText = decodeURIComponent(new URL(waUrl || 'https://x.invalid/?text=').searchParams.get('text') || '');
 expect('flujo: se abre WhatsApp con el número del servidor', waUrl.startsWith('https://wa.me/573001112233'), waUrl.slice(0, 60));
@@ -424,7 +481,7 @@ await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.e
 data = await evaluate(`document.querySelector('#fullName-error').textContent`);
 expect('checkout: validación en línea con mensaje claro', /nombre completo/i.test(data), data);
 const before = whatsappVisits.length;
-await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.elements.fullName.value = 'Cliente Prueba'; f.querySelector('[name="delivery"]').click(); f.querySelector('[name="payment"]').click(); f.requestSubmit(); })()`);
+await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.elements.fullName.value = 'Cliente Prueba'; f.querySelector('[name="delivery"]').click(); f.querySelector('[name="payment"]').click(); f.elements.legalAccept.checked = true; f.requestSubmit(); })()`);
 await delay(700);
 data = await evaluate(`document.querySelector('#checkout-confirmation')?.innerText || ''`);
 expect('checkout: pantalla “Tu pedido PED-… está listo” con botón a WhatsApp', /Tu pedido PED-2026-000123 está listo/.test(data) && /Abrir WhatsApp/.test(data), data.slice(0, 80));
@@ -461,8 +518,9 @@ for (const width of [390, 1440]) {
     data = await evaluate(`({ title: document.querySelector('.admin-heading h1')?.textContent, error: document.querySelector('#admin-content .empty-state h1')?.textContent || '', overflow: document.documentElement.scrollWidth - innerWidth, text: document.querySelector('#admin-content')?.innerText || '' })`);
     expect(`panel ${section} @${width}`, data.title && !/No pudimos cargar/.test(data.error), data.title || data.error);
     expect(`panel ${section} sin desbordamiento @${width}`, data.overflow <= 1, `${data.overflow}px`);
-    if (width === 390 && ['dashboard', 'customers', 'sales'].includes(section)) await screenshot(`admin-${section}-390`);
-    if (width === 1440 && ['dashboard', 'quotes'].includes(section)) await screenshot(`admin-${section}-1440`);
+    if (width === 390 && ['dashboard', 'customers', 'sales', 'quotes'].includes(section)) await screenshot(`admin-${section}-390`);
+    if (width === 390 && ['sales', 'customers', 'orders'].includes(section)) { await evaluate(`document.querySelector('.sales-tabs')?.scrollIntoView()`); await delay(300); await screenshot(`admin-${section}-list-390`); }
+    if (width === 1440 && ['dashboard', 'quotes', 'sales', 'customers', 'orders'].includes(section)) await screenshot(`admin-${section}-1440`);
   }
 }
 
@@ -530,6 +588,165 @@ await evaluate(`document.querySelector('[data-print-sale]').click()`);
 await delay(1500);
 data = await evaluate(`(async () => { const frame = document.querySelector('#document-print-frame'); const response = frame ? await fetch(frame.src) : null; const bytes = response ? (await response.arrayBuffer()).byteLength : 0; return { src: frame?.src || '', srcdoc: frame?.srcdoc || '', filename: frame?.dataset.filename || '', pages: Number(frame?.dataset.pages || 0), bytes }; })()`);
 expect('Imprimir reutiliza el mismo PDF multipágina, no una plantilla HTML', data.src.startsWith('blob:') && !data.srcdoc && data.filename === 'Comprobante_CV-2026-000001_Cliente-Prueba.pdf' && data.pages === directPages && data.bytes > 10000, JSON.stringify(data));
+
+// Cupones: tarjetas tipo ticket y formulario por secciones.
+for (const width of [390, 1440]) {
+  await visit('admin/index.html?section=coupons', width, 2000);
+  data = await evaluate(`({ cards: document.querySelectorAll('.coupon-card').length, kpis: document.querySelectorAll('.sales-kpi').length, overflow: document.documentElement.scrollWidth - innerWidth })`);
+  expect(`cupones: tarjetas e indicadores sin desbordamiento @${width}`, data.cards === 2 && data.kpis === 4 && data.overflow <= 1, JSON.stringify(data));
+  await screenshot(`admin-coupons-${width}`);
+  if (width === 390) { await evaluate(`document.querySelector('.sales-tabs')?.scrollIntoView()`); await delay(300); await screenshot('admin-coupons-list-390'); }
+  await evaluate(`document.querySelector('#new-coupon').click()`); await delay(700);
+  data = await evaluate(`(() => { const m = document.querySelector('.modal--coupon'); return m ? { overflow: m.scrollWidth - m.clientWidth, preview: m.querySelector('[data-preview-code]')?.textContent || '' } : null; })()`);
+  expect(`cupones: formulario con vista previa sin desbordamiento @${width}`, data && data.overflow <= 1 && /AUTOM/.test(data.preview), JSON.stringify(data));
+  await screenshot(`admin-coupon-form-${width}`);
+  data = await evaluate(`(async () => {
+    const picker = document.querySelector('[data-picker="include"]'); const first = () => picker.querySelector('[data-toggle]');
+    const id = first().dataset.toggle; first().click(); await new Promise(r => setTimeout(r, 100));
+    const afterOn = { chips: picker.querySelectorAll('[data-remove]').length, selected: picker.querySelector('[data-toggle="' + id + '"]').getAttribute('aria-selected') };
+    picker.scrollIntoView({ block: 'center' }); return { id, afterOn };
+  })()`);
+  expect(`cupones: alcance se elige con un clic @${width}`, data.afterOn.chips === 1 && data.afterOn.selected === 'true', JSON.stringify(data));
+  await delay(300); await screenshot(`admin-coupon-scope-${width}`);
+  data = await evaluate(`(() => { const picker = document.querySelector('[data-picker="include"]'); picker.querySelector('[data-toggle][aria-selected="true"]').click(); return { chips: picker.querySelectorAll('[data-remove]').length, overflow: document.querySelector('.modal--coupon').scrollWidth - document.querySelector('.modal--coupon').clientWidth }; })()`);
+  expect(`cupones: clic de nuevo quita la selección @${width}`, data.chips === 0 && data.overflow <= 1, JSON.stringify(data));
+}
+
+// "Atender hoy": tablero de tareas y sus modales.
+for (const width of [390, 1440]) {
+  await visit('admin/index.html?section=today', width, 2200);
+  data = await evaluate(`({ tasks: document.querySelectorAll('.task-item').length, kpis: document.querySelectorAll('.sales-kpi').length, overflow: document.documentElement.scrollWidth - innerWidth })`);
+  expect(`atender hoy: tareas con indicadores y sin desbordamiento @${width}`, data.tasks > 0 && data.kpis === 4 && data.overflow <= 1, JSON.stringify(data));
+  await screenshot(`admin-today-${width}`);
+  if (width === 390) { await evaluate(`document.querySelector('.sales-tabs')?.scrollIntoView()`); await delay(300); await screenshot('admin-today-list-390'); }
+  for (const [label, selector] of [['mensaje', '[data-task-message]'], ['posponer', '[data-task-postpone]']]) {
+    await evaluate(`document.querySelector('${selector}').click()`); await delay(700);
+    data = await evaluate(`(() => { const m = document.querySelector('.modal--action'); if (!m) return null; const a = m.querySelector('.sale-action__actions').getBoundingClientRect(); return { overflow: m.scrollWidth - m.clientWidth, actionsVisible: a.bottom <= innerHeight + 1 && a.top >= 0 }; })()`);
+    expect(`atender hoy: modal "${label}" sin desbordamiento @${width}`, data && data.overflow <= 1 && data.actionsVisible, JSON.stringify(data));
+    await screenshot(`admin-today-${label}-${width}`);
+    await evaluate(`document.querySelector('.modal--action [data-back], .modal--action .modal__close')?.click()`); await delay(400);
+  }
+}
+
+// Modales de acciones de venta: pago, devolución, cancelación y confirmación.
+for (const width of [390, 1440]) {
+  for (const [label, selector, status] of [['pago', '[data-paid]'], ['devolucion', '[data-return]'], ['cancelar', '[data-cancel-sale]'], ['confirmar', '[data-confirm-sale]', 'solicitud']]) {
+    const original = sales[0].status; if (status) sales[0].status = status;
+    await visit('admin/index.html?section=sales', width, 2000);
+    await evaluate(`document.querySelector('${selector}').click()`); await delay(800);
+    if (label === 'pago') await evaluate(`document.querySelector('.pay-tile input')?.click()`);
+    if (label === 'devolucion') await evaluate(`(() => { document.querySelector('.stepper [data-step="1"]')?.click(); document.querySelector('.choice-tile input')?.click(); })()`);
+    await delay(300);
+    data = await evaluate(`(() => { const m = document.querySelector('.modal--action'); if (!m) return null; const a = m.querySelector('.sale-action__actions').getBoundingClientRect(); return { overflow: m.scrollWidth - m.clientWidth, viewport: document.documentElement.scrollWidth - innerWidth, actionsVisible: a.bottom <= innerHeight + 1 && a.top >= 0, value: m.querySelector('[data-return-value]')?.textContent || '' }; })()`);
+    expect(`modal de venta "${label}" sin desbordamiento y con botones visibles @${width}`, data && data.overflow <= 1 && data.viewport <= 1 && data.actionsVisible, JSON.stringify(data));
+    await screenshot(`admin-sale-${label}-${width}`);
+    sales[0].status = original;
+  }
+}
+
+// --- CRM: ayuda/privacidad, autorización, cupón y nuevas secciones del panel ---------
+for (const width of [320, 390, 1440]) {
+  await visit('ayuda.html#privacidad', width, 1800);
+  data = await evaluate(`({ section: !!document.querySelector('#privacidad'), text: document.querySelector('#privacidad')?.innerText || '', overflow: document.documentElement.scrollWidth - innerWidth, link: !!document.querySelector('[data-site-footer] a[href="ayuda.html#privacidad"]') })`);
+  expect(`ayuda: sección de privacidad configurable @${width}`, data.section && /Responsable/.test(data.text) && /pendiente de configuración/i.test(data.text) && data.link, data.text.slice(0, 120));
+  expect(`ayuda sin desbordamiento @${width}`, data.overflow <= 1, `${data.overflow}px`);
+}
+Object.assign(settings, { tracking_enabled: true, analytics_consent_text: 'Usamos tu navegación en esta tienda para mejorarla.', analytics_consent_version: 'an-prueba-1', privacy_controller_name: 'Tienda Prueba' });
+await visit('index.html', 390, 1500);
+await evaluate(`localStorage.removeItem('bm_privacy_v1'); sessionStorage.clear()`);
+await visit('index.html', 390, 1800);
+data = await evaluate(`({ banner: !!document.querySelector('[data-privacy-banner]'), overflow: document.documentElement.scrollWidth - innerWidth })`);
+expect('aviso de privacidad visible solo con captura configurada', data.banner && data.overflow <= 1);
+await screenshot('privacy-banner-390');
+const visitorsBefore = privacyCalls.register;
+await evaluate(`document.querySelector('[data-privacy="reject"]').click()`); await delay(500);
+await visit('index.html', 390, 1500);
+data = await evaluate(`({ banner: !!document.querySelector('[data-privacy-banner]'), stored: JSON.parse(localStorage.getItem('bm_privacy_v1') || '{}') })`);
+expect('rechazar: sin visitante en servidor, la decisión se recuerda y se puede comprar', !data.banner && privacyCalls.register === visitorsBefore && data.stored.analytics === false);
+await evaluate(`localStorage.removeItem('bm_privacy_v1')`);
+await visit('producto.html?slug=celular-prueba', 390, 1800);
+await evaluate(`document.querySelector('[data-privacy="accept"]').click()`); await delay(600);
+expect('aceptar registra un visitante seudónimo', privacyCalls.register === visitorsBefore + 1);
+await evaluate(`document.querySelector('#product-favorite').click()`); await delay(4800);
+const trackedText = JSON.stringify(privacyCalls.events);
+expect('eventos: favorito enviado con id único y sin datos personales', privacyCalls.events.some(event => event.type === 'favorite_added' && /^[0-9a-f-]{36}$/.test(event.event_id)) && !/Cliente Prueba|300 123 4567|phone|name/.test(trackedText), trackedText.slice(0, 160));
+data = await evaluate(`({ complements: document.querySelector('#complement-section')?.innerText || '', reason: document.querySelector('#complement-section .product-card__reason')?.textContent || '' })`);
+expect('ficha: complementos configurados en bloque propio y con motivo prudente', /Combina con este producto/.test(data.complements) && /Compatible con Celular de prueba/.test(data.reason), data.reason);
+await evaluate(`localStorage.removeItem('bm_privacy_v1'); sessionStorage.clear()`);
+Object.assign(settings, { tracking_enabled: false });
+
+await visit('producto.html?slug=nevera-prueba', 390, 1500);
+await evaluate(`document.querySelector('#add-cart').click()`); await delay(600);
+await visit('carrito.html', 390, 1800);
+const applyCoupon = async code => { await evaluate(`(() => { const input = document.querySelector('#coupon-code'); if (input.readOnly) document.querySelector('[data-coupon-remove]').click(); })()`); await delay(400); await evaluate(`(() => { const input = document.querySelector('#coupon-code'); input.value = '${code}'; input.form.requestSubmit(); })()`); await delay(1400); return evaluate(`({ status: document.querySelector('[data-coupon-status]')?.textContent || '', summary: document.querySelector('#cart-summary')?.innerText || '', overflow: document.documentElement.scrollWidth - innerWidth })`); };
+data = await applyCoupon('VENCIDO');
+expect('cupón vencido explicado sin cambiar el total', /venció/.test(data.status) && !/Código VENCIDO/.test(data.summary), data.status);
+data = await applyCoupon('CAIDO');
+expect('servicio de cupones no disponible: mensaje y carrito intacto', /No pudimos comprobar/.test(data.status), data.status);
+data = await applyCoupon('PRUEBA10');
+expect('cupón válido: ahorro y total actualizado en el carrito', /Código PRUEBA10/.test(data.summary) && /Ahorras/.test(data.status) && data.overflow <= 1, data.status);
+await screenshot('cart-coupon-390');
+await visit('checkout.html', 390, 2200);
+data = await evaluate(`document.querySelector('#checkout-totals')?.innerText || ''`);
+expect('checkout conserva y revalida el código', /Código PRUEBA10/.test(data), data.replace(/\n/g, ' | '));
+await evaluate(`(() => { const f = document.querySelector('#checkout-form'); f.elements.fullName.value = 'Cliente Prueba'; f.elements.phone.value = '300 123 4567';
+  f.querySelector('[name="delivery"]').click(); f.querySelector('[name="payment"]').click(); f.elements.legalAccept.checked = true; f.requestSubmit(); })()`);
+await delay(4500);
+expect('pedido: envía solo código y descuento visto; el servidor recalcula', lastOrderPayload?.coupon_code === 'PRUEBA10' && Number.isFinite(lastOrderPayload?.expected_discount) && !JSON.stringify(lastOrderPayload.items).includes('price'), JSON.stringify({ code: lastOrderPayload?.coupon_code, expected: lastOrderPayload?.expected_discount }));
+
+for (const width of [390, 1440]) {
+  for (const section of ['today', 'coupons', 'relationships', 'costs']) {
+    await visit(`admin/index.html?section=${section}`, width, 2600);
+    data = await evaluate(`({ title: document.querySelector('.admin-heading h1')?.textContent, overflow: document.documentElement.scrollWidth - innerWidth })`);
+    expect(`panel ${section} @${width}`, Boolean(data.title), data.title || 'sin título');
+    expect(`panel ${section} sin desbordamiento @${width}`, data.overflow <= 1, `${data.overflow}px`);
+  }
+  // La pantalla de carga del análisis dura unos segundos a propósito: se espera al informe.
+  await visit(`admin/index.html?section=customer&id=${customerRef.id}`, width, 500);
+  for (let waited = 0; waited < 12000 && !(await evaluate(`!!document.querySelector('.analysis-head')`)); waited += 250) await delay(250);
+  await delay(400);
+  data = await evaluate(`({ name: document.querySelector('.analysis-head h1')?.textContent, tabs: [...document.querySelectorAll('.analysis-tabs [role="tab"]')].map(tab => tab.textContent), text: document.querySelector('#admin-content')?.innerText || '', overflow: document.documentElement.scrollWidth - innerWidth })`);
+  expect(`análisis con URL propia y 6 pestañas @${width}`, data.name === 'Cliente Prueba' && data.tabs.join('|') === 'Resumen|Intereses|Compras|Ofertas|Actividad|Seguimiento', data.tabs.join('|'));
+  expect(`análisis: segmento, intención y plan de acción en primera pantalla @${width}`, /Segmento/i.test(data.text) && /Intención de compra/i.test(data.text) && /Plan de acción/i.test(data.text) && /Total comprado/i.test(data.text));
+  expect(`análisis: recomendaciones con botón "Analizar y recomendar" @${width}`, /Analizar y recomendar/.test(data.text));
+  expect(`análisis sin desbordamiento @${width}`, data.overflow <= 1, `${data.overflow}px`);
+  if (width === 390) await screenshot('admin-customer-analysis-390'); else await screenshot('admin-customer-analysis-1440');
+}
+// Recomendaciones: escaneo animado → tarjetas con afinidad en % → oferta con código → WhatsApp.
+await evaluate(`(() => { window.__opened = []; window.open = url => { const win = { closed: false, opener: null, document: { write() {} }, location: {} }; window.__opened.push(win); if (url) win.location.href = url; return win; }; })()`);
+await evaluate(`document.querySelector('[data-reco-run]').click()`); await delay(700);
+data = await evaluate(`({ scanning: !!document.querySelector('.reco-scan'), log: document.querySelector('.reco-log')?.innerText || '' })`);
+expect('recomendaciones: animación de análisis con consola de datos reales', data.scanning && /historial/.test(data.log), data.log.slice(0, 80));
+await delay(7500);
+data = await evaluate(`({ items: document.querySelectorAll('.reco-item').length, score: document.querySelector('.reco-item__score b')?.innerText || '', checked: document.querySelectorAll('.reco-item input:checked').length, text: document.querySelector('[data-reco-panel]')?.innerText || '' })`);
+expect('recomendaciones: tarjetas con afinidad en % y motivos', (data.items > 0 && /\d+ %/.test(data.score)) || /afinidad suficiente/.test(data.text), `${data.items} tarjetas · ${data.score}`);
+await screenshot('admin-customer-reco-1440');
+if (data.items > 0) {
+  if (!data.checked) await evaluate(`document.querySelector('.reco-item input').click()`);
+  await evaluate(`document.querySelector('[data-reco-campaign]').click()`); await delay(1200);
+  data = await evaluate(`({ modal: !!document.querySelector('.modal--campaign'), totals: document.querySelector('[data-totals]')?.innerText || '', message: document.querySelector('.campaign textarea')?.value || '' })`);
+  expect('oferta: totales calculados por la tienda y mensaje con espacio para el código', data.modal && /Total para/.test(data.totals) && data.message.includes('[CÓDIGO]'), data.totals.slice(0, 60));
+  await screenshot('admin-customer-campaign-1440');
+  await evaluate(`document.querySelector('.modal--campaign [data-go]').click()`); await delay(1500);
+  data = await evaluate(`({ code: document.querySelector('.campaign__code code')?.textContent || '', url: window.__opened.at(-1)?.location?.href || '' })`);
+  const sent = new URL(data.url || 'https://x.invalid/?text=').searchParams.get('text') || '';
+  expect('oferta: genera el código y abre WhatsApp con el mensaje y el código', data.code === 'OF-PRUEBA7' && data.url.startsWith('https://wa.me/') && sent.includes('OF-PRUEBA7') && !sent.includes('[CÓDIGO]') && offerCalls.length === 1, `${data.code} · ${sent.slice(0, 60)}`);
+  await screenshot('admin-customer-campaign-done-1440');
+  await evaluate(`document.querySelector('.modal--campaign .modal__close')?.click()`); await delay(300);
+}
+await evaluate(`document.querySelector('[data-refresh]').click()`); await delay(2500);
+data = await evaluate(`({ status: document.querySelector('.analysis-coverage')?.textContent || '' })`);
+expect('"Actualizar datos" vuelve a consultar y muestra la hora y la versión', /Datos consultados/.test(data.status) && /metricas-/.test(data.status), data.status.slice(0, 120));
+
+await visit('producto.html?slug=juguete-agotado', 390, 1800);
+data = await evaluate(`({ visible: !document.querySelector('#restock-notice')?.hidden })`);
+expect('ficha agotada ofrece "Avísame cuando llegue"', data.visible);
+await evaluate(`document.querySelector('#restock-notice').click()`); await delay(400);
+await evaluate(`(() => { const f = document.querySelector('.restock-form'); f.elements.name.value = 'Cliente Aviso'; f.elements.phone.value = '300 765 4321'; f.requestSubmit(); })()`); await delay(400);
+data = await evaluate(`document.querySelector('.restock-form [data-error]')?.textContent || ''`);
+expect('aviso de disponibilidad exige autorización expresa', /autorizar/.test(data) && !restockCalls.length, data);
+await evaluate(`(() => { const f = document.querySelector('.restock-form'); f.elements.accepted.checked = true; f.requestSubmit(); })()`); await delay(800);
+expect('aviso de disponibilidad registrado con la variante agotada', restockCalls.length === 1 && restockCalls[0].accepted === true && restockCalls[0].target_variant, JSON.stringify(restockCalls[0] || {}));
 
 const remote = intercepted.length;
 expect('todas las peticiones a Supabase fueron interceptadas (ninguna salió a la red)', remote > 0, `${remote} peticiones simuladas`);

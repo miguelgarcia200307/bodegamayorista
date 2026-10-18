@@ -5,7 +5,7 @@
 - URL autorizada: `https://ekepygodvciqnqkrgrsv.supabase.co`
 - Proyecto heredado detectado y bloqueado: `gacqqaimdfvkmznsglpg`
 - Migraciones heredadas: solo en `supabase/legacy_readonly/fuera_de_lugar_migrations/`; no forman parte de la cadena activa.
-- Migraciones activas: `202609280001_bodega_mayorista_clean_base.sql` y `202609280002_crm_sales_inventory.sql`. Solo insertan configuración técnica (`site_settings`, `document_sequences`, buckets).
+- Migraciones activas: `202609280001`, `202609280002`, `202609290001`, `202610130001` y, pendientes de aplicar, `202610140001` a `202610140003`. Solo insertan configuración técnica (`site_settings`, `document_sequences`, buckets); `tools/qa-bodega.mjs` lo verifica y guarda las huellas de las ya entregadas.
 - La clave publicable es la única credencial en el código del navegador. Ninguna secret key, contraseña de base de datos ni token se guarda en el repositorio (`.env*` está en `.gitignore`).
 
 ## Comprobaciones

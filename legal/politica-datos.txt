@@ -1,0 +1,82 @@
+POLÍTICA DE TRATAMIENTO DE DATOS PERSONALES
+Versión {{version_datos}} · vigente desde el {{vigencia}}
+
+1. RESPONSABLE DEL TRATAMIENTO
+Responsable: {{responsable}}.
+Identificación: {{identificacion}}.
+Domicilio: {{ciudad}}, Colombia.
+Dirección: {{direccion}}.
+Correo electrónico: {{correo}}.
+Teléfono: {{telefono}}.
+WhatsApp para consultas, reclamos y solicitudes sobre datos personales: {{whatsapp}}.
+Sitio web: {{sitio}}.
+El propietario del establecimiento es el encargado de atender las consultas y reclamos de los titulares.
+
+2. MARCO LEGAL
+Esta política se adopta en cumplimiento de la Ley 1581 de 2012, el Decreto 1377 de 2013 (compilado en el Decreto Único Reglamentario 1074 de 2015) y las demás normas que los modifiquen o complementen.
+
+3. DEFINICIONES
+Titular: la persona natural cuyos datos se tratan. Tratamiento: cualquier operación sobre datos personales, como recolección, almacenamiento, uso, circulación o supresión. Autorización: el consentimiento previo, expreso e informado del titular. Encargado: quien trata datos por cuenta del responsable. Transmisión y transferencia: comunicación de datos a un encargado o a otro responsable, dentro o fuera de Colombia.
+
+4. DATOS QUE TRATAMOS
+4.1. Datos de identificación y contacto: nombre, número de celular o WhatsApp, ciudad y dirección de entrega y, cuando los suministres para el comprobante o la factura, tu documento de identidad o NIT y tu correo electrónico.
+4.2. Datos de la relación comercial: pedidos, cotizaciones, compras, pagos declarados, entregas, devoluciones, garantías, códigos de descuento usados y comunicaciones con la Tienda.
+4.3. Fecha de nacimiento, solo si decides suministrarla.
+4.4. Datos de navegación seudónimos (productos vistos, búsquedas, favoritos y carrito), solo si autorizas la analítica.
+4.5. La Tienda no solicita datos sensibles (como origen racial o étnico, orientación política, convicciones religiosas, salud, vida sexual o datos biométricos). Si en algún caso se solicitaran, su entrega sería facultativa.
+4.6. Si suministras datos de un tercero (por ejemplo, de quien recibirá el pedido), declaras que cuentas con su autorización para entregarlos con esta finalidad.
+
+5. FINALIDADES
+5.1. Finalidades necesarias para tu compra (indispensables para atender tu pedido; si no las autorizas no es posible registrarlo en línea):
+a) Registrar y gestionar tus pedidos, cotizaciones y compras.
+b) Contactarte por WhatsApp, llamada, mensaje de texto o correo para confirmar disponibilidad, precio, pago, entrega y el estado de tu pedido.
+c) Coordinar entregas con transportadoras y mensajeros, a quienes se entregan únicamente los datos necesarios para la entrega.
+d) Emitir comprobantes y facturas, y llevar la contabilidad y los registros que exige la ley.
+e) Atender garantías, derechos de retracto, cambios, devoluciones, peticiones, quejas y reclamos.
+f) Prevenir fraudes, verificar pedidos inusuales, proteger la seguridad del sitio y aplicar los límites de uso.
+g) Mantener tu historial comercial y elaborar estadísticas e indicadores internos de ventas para atender mejor la relación comercial, sin tomar decisiones automatizadas que produzcan efectos jurídicos sobre ti.
+h) Cumplir obligaciones legales y requerimientos de autoridades competentes, y ejercer o defender los derechos de la Tienda.
+5.2. Finalidades opcionales (requieren tu autorización separada, que puedes negar o retirar sin que afecte tu compra):
+a) Enviarte ofertas, promociones, novedades, códigos de descuento y saludos de cumpleaños por WhatsApp, llamada, mensaje de texto o correo, y usar tu historial de compras para que sean pertinentes.
+b) Medir la navegación del sitio con un identificador aleatorio de tu navegador (analítica).
+c) Mostrarte recomendaciones personalizadas según tu navegación y, si verificas tu número, relacionar esa navegación con tu ficha de cliente.
+d) Avisarte cuando un producto vuelva a estar disponible, si lo solicitas.
+
+6. AUTORIZACIÓN
+6.1. Recolectamos tu autorización de forma previa, expresa e informada: en el sitio, mediante la casilla de aceptación al enviar el pedido y casillas separadas para las finalidades opcionales; por WhatsApp o en el establecimiento, mediante tu manifestación expresa o conductas inequívocas que permitan concluir razonablemente que otorgaste la autorización.
+6.2. Conservamos prueba de la autorización: versión del texto aceptado, fecha y hora, medio y pedido relacionado.
+6.3. No se requiere autorización en los casos del artículo 10 de la Ley 1581 de 2012, entre ellos datos de naturaleza pública y requerimientos de autoridades en ejercicio de sus funciones.
+
+7. DERECHOS DEL TITULAR
+Como titular puedes: a) conocer, actualizar y rectificar tus datos; b) solicitar prueba de la autorización otorgada; c) ser informado del uso que se ha dado a tus datos; d) presentar quejas ante la Superintendencia de Industria y Comercio por infracciones a la ley, una vez agotado el trámite de consulta o reclamo ante la Tienda; e) revocar la autorización y/o solicitar la supresión de tus datos cuando no exista un deber legal o contractual de conservarlos; y f) acceder gratuitamente a tus datos.
+
+8. PROCEDIMIENTO PARA CONSULTAS Y RECLAMOS
+8.1. Canales: WhatsApp {{whatsapp}}.
+Correo electrónico: {{correo}}.
+8.2. Consultas: se responden en un máximo de diez (10) días hábiles desde su recibo. Si no es posible responder en ese plazo, se te informará el motivo y la nueva fecha, que no superará cinco (5) días hábiles adicionales.
+8.3. Reclamos (corrección, actualización, supresión o incumplimiento): deben indicar tu identificación, la descripción de los hechos, la dirección o medio de respuesta y los documentos de soporte. Si el reclamo está incompleto, se te pedirá completarlo dentro de los cinco (5) días siguientes; si transcurren dos (2) meses sin que lo completes, se entenderá desistido. El término para atenderlo es de quince (15) días hábiles desde el día siguiente a su recibo, prorrogable hasta por ocho (8) días hábiles adicionales informándote el motivo.
+8.4. Para proteger tus datos, verificaremos tu identidad antes de entregar información o realizar cambios. La solicitud puede presentarla el titular, sus causahabientes o su representante debidamente acreditado.
+8.5. La revocatoria o supresión no procede respecto de datos que deban conservarse por un deber legal o contractual, por ejemplo los soportes contables y comerciales de compras ya realizadas. En ese caso dejaremos de usarlos para las finalidades opcionales.
+
+9. ENCARGADOS, TRANSMISIÓN Y TRANSFERENCIA
+9.1. Para operar la tienda se usan proveedores que actúan como encargados bajo obligaciones de confidencialidad y seguridad: servicios de alojamiento y base de datos en la nube, con servidores ubicados actualmente en {{region_datos}}; servicios de mensajería como WhatsApp, cuando tú o la Tienda los utilizan para comunicarse; transportadoras y mensajeros para las entregas; y asesores contables o legales cuando sea necesario.
+9.2. Al aceptar esta política autorizas expresamente la transmisión y, cuando corresponda, la transferencia internacional de tus datos a dichos proveedores, con las finalidades descritas.
+9.3. La Tienda no vende ni alquila tus datos personales.
+
+10. SEGURIDAD
+La Tienda adopta medidas técnicas, humanas y administrativas razonables para proteger los datos, entre ellas acceso restringido con credenciales, control de permisos por rol, comunicaciones cifradas y registro de operaciones. Ningún sistema es completamente invulnerable; si ocurriera un incidente que comprometa tus datos, actuaremos y lo informaremos conforme a la ley.
+
+11. CONSERVACIÓN
+Conservamos los datos mientras sean necesarios para las finalidades autorizadas. Los soportes contables y comerciales se conservan por el término que exige la ley (hasta diez (10) años). Los eventos de navegación individuales se conservan hasta 90 días y luego solo se mantienen agregados sin identificar al visitante por hasta 12 meses. Si retiras una autorización opcional, dejamos de usar tus datos para esa finalidad.
+
+12. NIÑOS, NIÑAS Y ADOLESCENTES
+El sitio no está dirigido a menores de edad. Sus datos solo se tratan cuando los suministra su representante legal y respetando su interés superior y sus derechos fundamentales.
+
+13. ALMACENAMIENTO EN TU NAVEGADOR
+El sitio guarda en tu propio navegador el carrito, los favoritos y tus preferencias de privacidad para que funcione. La analítica y la personalización solo se activan si las autorizas y puedes cambiar tu decisión en "Preferencias de privacidad".
+
+14. REGISTRO NACIONAL DE BASES DE DATOS
+La Tienda inscribirá sus bases de datos en el Registro Nacional de Bases de Datos de la Superintendencia de Industria y Comercio cuando esté legalmente obligada a hacerlo.
+
+15. VIGENCIA Y CAMBIOS
+Esta política rige desde el {{vigencia}}. Los cambios sustanciales se publicarán en el sitio con una nueva versión y, cuando la ley lo exija, se solicitará una nueva autorización. Las bases de datos se mantendrán vigentes mientras se desarrolle la actividad comercial y por el tiempo adicional que exija la ley.

@@ -1,5 +1,7 @@
 // Ficha de producto.
-import { getProductBySlug, getProducts, getProductsByIds } from '../lib/api.js';
+import { getCategories, getProductBySlug, getProductRelationships, getProducts, getProductsByIds, requestRestockNotice } from '../lib/api.js';
+import { recommendForProduct } from '../lib/public-reco.js';
+import { localPersonalizationAllowed, observeImpressions, observeProductView, track } from '../lib/privacy.js';
 import { renderProductSection } from '../components/product-section.js';
 import { openModal, openSheet } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -14,6 +16,8 @@ const isRealOption = name => Boolean(name) && !/^única$/i.test(String(name).tri
 const text = value => escapeHtml(String(value || '').trim()).replace(/\r?\n/g, '<br>');
 
 function rememberViewed(id) {
+  // Vistos recientemente: solo en este navegador y solo si la personalización lo permite.
+  if (!localPersonalizationAllowed()) return [];
   try {
     const ids = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').filter(item => typeof item === 'string' && item !== id);
     localStorage.setItem(RECENT_KEY, JSON.stringify([id, ...ids].slice(0, 12)));
@@ -137,6 +141,7 @@ export async function initProduct() {
         <div class="quantity-row"><span id="qty-label">Cantidad</span><div class="stepper" role="group" aria-labelledby="qty-label"><button id="qty-minus" type="button" aria-label="Quitar una unidad">${icon('minus', { size: 18 })}</button><input id="quantity" type="number" inputmode="numeric" min="1" value="${quantity}" aria-label="Cantidad"><button id="qty-plus" type="button" aria-label="Agregar una unidad">${icon('plus', { size: 18 })}</button></div></div>
         <p id="purchase-total" class="purchase__total" aria-live="polite"></p>
         <button id="add-cart" class="btn btn--primary btn--block" type="button"></button>
+        <button id="restock-notice" class="btn btn--secondary btn--block" type="button" hidden>Avísame cuando llegue</button>
         ${site.whatsapp ? '<a id="ask-whatsapp" class="btn btn--whatsapp-outline btn--block" target="_blank" rel="noopener"></a>' : ''}
       </div>
       ${trustMarkup(site)}
@@ -206,6 +211,8 @@ export async function initProduct() {
   }
 
   function currentVariant() { return variantFor(selectedColor?.id, selectedSize?.id); }
+  // Variante para el aviso de disponibilidad aunque ninguna talla/opción tenga stock.
+  function restockVariant() { return currentVariant() || (product.product_variants || []).find(variant => variant.active !== false && (!selectedColor || variant.color_id === selectedColor.id)) || null; }
 
   function renderOptions() {
     if (realColors.length > 1) {
@@ -272,6 +279,7 @@ export async function initProduct() {
       cta.disabled = !stock;
       cta.textContent = !stock ? 'Agotado' : editing ? 'Actualizar carrito' : 'Agregar al carrito';
     }
+    $('#restock-notice').hidden = Boolean(stock) || !restockVariant();
     sticky.querySelector('strong').textContent = formatMoney(stock ? total : regular);
     sticky.querySelector('button').disabled = !stock;
     sticky.querySelector('button').textContent = !stock ? 'Agotado' : editing ? 'Actualizar' : 'Agregar al carrito';
@@ -299,22 +307,24 @@ export async function initProduct() {
     selectedColor = colors.find(color => color.id === button.dataset.color) || null;
     if (!stockOf(currentVariant())) selectedSize = firstAvailableSize(selectedColor) || selectedSize;
     renderGallery(); renderOptions(); update();
+    if (currentVariant()) track('select_variant', { productId: product.id, variantId: currentVariant().id });
   });
   $('#size-options')?.addEventListener('click', event => {
     const button = event.target.closest('[data-size]');
     if (!button || button.disabled) return;
     selectedSize = sizes.find(size => size.id === button.dataset.size) || null;
     renderOptions(); update();
+    if (currentVariant()) track('select_variant', { productId: product.id, variantId: currentVariant().id });
   });
   $('#qty-minus').addEventListener('click', () => setQuantity(quantity - 1));
   $('#qty-plus').addEventListener('click', () => setQuantity(quantity + 1));
   $('#quantity').addEventListener('change', event => setQuantity(Number(event.target.value) || 1));
 
-  const track = $('#gallery-track');
+  const galleryTrack = $('#gallery-track');
   let scrollTimer;
-  track.addEventListener('scroll', () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(() => updateGalleryIndex(Math.round(track.scrollLeft / Math.max(1, track.clientWidth))), 60); }, { passive: true });
-  track.addEventListener('click', event => { if (event.target.closest('img')) openLightbox(galleryIndex, event.target); });
-  track.addEventListener('keydown', event => { if (event.key === 'ArrowRight') scrollToImage(galleryIndex + 1); if (event.key === 'ArrowLeft') scrollToImage(galleryIndex - 1); });
+  galleryTrack.addEventListener('scroll', () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(() => updateGalleryIndex(Math.round(galleryTrack.scrollLeft / Math.max(1, galleryTrack.clientWidth))), 60); }, { passive: true });
+  galleryTrack.addEventListener('click', event => { if (event.target.closest('img')) openLightbox(galleryIndex, event.target); });
+  galleryTrack.addEventListener('keydown', event => { if (event.key === 'ArrowRight') scrollToImage(galleryIndex + 1); if (event.key === 'ArrowLeft') scrollToImage(galleryIndex - 1); });
   $('#gallery-thumbs').addEventListener('click', event => { const thumb = event.target.closest('[data-image]'); if (thumb) scrollToImage(Number(thumb.dataset.image)); });
   $('#gallery-zoom').addEventListener('click', event => openLightbox(galleryIndex, event.currentTarget));
 
@@ -374,6 +384,7 @@ export async function initProduct() {
     }
   }
   $('#add-cart').addEventListener('click', addToCart);
+  $('#restock-notice').addEventListener('click', event => openRestockForm(product, restockVariant(), [selectedColor, selectedSize].filter(item => item && isRealOption(item.name)).map(item => item.name).join(' / '), site, event.currentTarget));
   sticky.querySelector('button').addEventListener('click', () => $('#add-cart').click());
 
   // Barra fija: aparece cuando el botón principal sale de la vista.
@@ -391,16 +402,66 @@ export async function initProduct() {
   const mainImage = productImage(product, selectedColor?.id);
   setMeta(product, mainImage);
   structuredData(product, mainImage, regular, stock, crumbs);
-  loadRelated(product, category?.id);
+  observeProductView(product.id);
+  loadRelated(product);
   loadRecent(previousViews);
 }
 
-async function loadRelated(product, categoryId) {
+// Recomendación pública: alternativas para comparar y complementos en bloques separados.
+// Solo catálogo y reglas configuradas por la tienda; nunca datos de otros compradores.
+async function loadRelated(product) {
   try {
-    const { products } = await getProducts({ categoryId, brandId: categoryId ? undefined : product.brand_id || undefined, pageSize: 10 });
-    const related = products.filter(item => item.id !== product.id).slice(0, 8);
-    renderProductSection($('#related-section'), { eyebrow: 'Te puede gustar', title: 'También te puede interesar', products: related, seeAllUrl: '', layout: 'rail' });
+    const [categories, relationships] = await Promise.all([getCategories().catch(() => []), getProductRelationships().catch(() => [])]);
+    const leafId = product.product_categories?.map(link => link.categories).find(category => category?.parent_id)?.id || product.product_categories?.[0]?.category_id;
+    const targetProducts = relationships.filter(rule => rule.target_type === 'product').map(rule => rule.target_id);
+    const targetCategories = [...new Set(relationships.filter(rule => rule.target_type === 'category').map(rule => rule.target_id))].slice(0, 6);
+    const pools = await Promise.all([
+      leafId ? getProducts({ categoryId: leafId, pageSize: 24 }).then(result => result.products) : [],
+      targetProducts.length ? getProductsByIds(targetProducts.slice(0, 40)) : [],
+      ...targetCategories.map(categoryId => getProducts({ categoryId, pageSize: 12 }).then(result => result.products).catch(() => []))
+    ]);
+    const pool = [...new Map(pools.flat().map(item => [item.id, item])).values()];
+    const { alternatives, complements } = recommendForProduct(product, { products: pool, categories, relationships });
+    renderRecoBlock($('#complement-section'), { eyebrow: 'Completa tu compra', title: 'Combina con este producto', items: complements, placement: 'ficha_complementos' });
+    renderRecoBlock($('#related-section'), { eyebrow: 'Para comparar', title: 'Otras opciones similares', items: alternatives, placement: 'ficha_alternativas' });
   } catch (error) { console.warn('No se cargaron productos relacionados:', error); }
+}
+
+function renderRecoBlock(root, { eyebrow, title, items, placement }) {
+  if (!root || !renderProductSection(root, { eyebrow, title, products: items.map(item => item.product), seeAllUrl: '', layout: 'rail' })) return;
+  root.querySelectorAll('.product-card').forEach((card, position) => {
+    card.dataset.recoProduct = items[position]?.product.id || '';
+    card.dataset.recoPosition = String(position + 1);
+    const reason = items[position]?.reason;
+    if (reason) card.querySelector('.product-card__body')?.insertAdjacentHTML('beforeend', `<p class="product-card__reason">${escapeHtml(reason)}</p>`);
+  });
+  observeImpressions(root, placement);
+}
+
+// Aviso de disponibilidad: solicitud expresa del cliente con su autorización.
+function openRestockForm(product, variant, option, site, trigger) {
+  if (!variant) return;
+  const consent = site.raw?.restock_consent_text || 'Autorizo que me contacten al número indicado únicamente para avisarme que este producto volvió a estar disponible.';
+  const form = document.createElement('form');
+  form.className = 'restock-form';
+  form.noValidate = true;
+  form.innerHTML = `<p>${escapeHtml(product.name)}${option ? ` · ${escapeHtml(option)}` : ''}</p>
+    <label class="field"><span class="field__label">Nombre</span><input name="name" required maxlength="120" autocomplete="name"></label>
+    <label class="field"><span class="field__label">Celular (WhatsApp)</span><input name="phone" type="tel" required maxlength="25" inputmode="tel" autocomplete="tel" placeholder="300 123 4567"></label>
+    <label class="check-field"><input name="accepted" type="checkbox" required><span>${escapeHtml(consent)} <a href="ayuda.html#privacidad" target="_blank" rel="noopener">Política de datos</a></span></label>
+    <p class="field-error" data-error role="alert"></p>
+    <button class="btn btn--primary btn--block" type="submit">Avisarme</button>`;
+  const modal = openModal({ title: 'Avísame cuando llegue', content: form, trigger });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const error = form.querySelector('[data-error]');
+    const name = form.elements.name.value.trim(); const phone = form.elements.phone.value.trim();
+    error.textContent = name.length < 2 ? 'Escribe tu nombre.' : phone.replace(/\D/g, '').length < 8 ? 'Escribe un celular válido.' : !form.elements.accepted.checked ? 'Debes autorizar el aviso.' : '';
+    if (error.textContent) return;
+    const button = form.querySelector('[type="submit"]'); setButtonLoading(button, true, 'Registrando…');
+    try { await requestRestockNotice(variant.id, name, phone, true); modal.close(true); toast('Listo: te avisaremos cuando llegue', 'success'); }
+    catch (requestError) { error.textContent = requestError?.message || 'No pudimos registrar el aviso. Intenta de nuevo.'; setButtonLoading(button, false); }
+  });
 }
 
 async function loadRecent(ids) {

@@ -66,10 +66,14 @@
           </details>
         </section>
 
-        <section class="checkout-card checkout-consents" aria-label="Privacidad">
-          <p id="data-policy-summary" class="field__hint">Usaremos tus datos solo para gestionar este pedido y contactarte por WhatsApp.</p>
+        <section class="checkout-card checkout-consents" aria-labelledby="legal-title">
+          <h2 id="legal-title" class="sr-only">Términos y privacidad</h2>
+          <label class="check-field check-field--required field" for="legal-accept"><input id="legal-accept" name="legalAccept" type="checkbox" required aria-describedby="legalAccept-error legal-versions"><span>He leído y acepto los <a href="ayuda.html#terminos" data-legal-open="terms">Términos y condiciones</a> y autorizo el tratamiento de mis datos personales para gestionar mi pedido conforme a la <a href="ayuda.html#privacidad" data-legal-open="policy">Política de tratamiento de datos personales</a>. <strong>Obligatorio para enviar el pedido.</strong> <small id="legal-versions" class="field__hint"></small></span></label>
+          <small id="legalAccept-error" class="field-error" aria-live="polite"></small>
+          <p id="data-policy-summary" class="field__hint">Usaremos tus datos para gestionar este pedido y contactarte por WhatsApp sobre él.</p>
           <details id="data-policy" class="checkout-more" hidden><summary>Tratamiento de datos personales</summary><p id="data-policy-text"></p></details>
           <label class="check-field"><input id="marketing-consent" name="marketingConsent" type="checkbox"><span id="marketing-consent-text">Autorizo, de forma opcional, felicitaciones de cumpleaños y contacto promocional.</span></label>
+          <p class="field__hint">La autorización promocional es opcional y no afecta tu compra.</p>
         </section>
 
         <div class="checkout-submit-mobile">

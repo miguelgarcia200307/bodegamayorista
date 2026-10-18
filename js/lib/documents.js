@@ -153,7 +153,7 @@ function writePdfSection(pdf, data, logoData, font, title, text, y) {
 
 function addTotals(pdf, data, logoData, font, y) {
   y = ensureRoom(pdf, y, 38, data, logoData, font); const x = 127; const width = 69;
-  const rows = [['Subtotal', data.doc.subtotal, false], ...(Number(data.doc.discount_total) ? [['Descuentos', Number(data.doc.discount_total), true]] : []), ['Entrega', Number(data.doc.delivery_cost || 0), false]];
+  const rows = [['Subtotal', data.doc.subtotal, false], ...(Number(data.doc.discount_total) ? [[(data.doc.coupon_snapshot?.code || data.doc.coupon_code) ? `Cupón ${data.doc.coupon_snapshot?.code || data.doc.coupon_code}` : 'Descuentos', Number(data.doc.discount_total), true]] : []), ['Entrega', Number(data.doc.delivery_cost || 0), false]];
   pdf.setFontSize(8.7); pdf.setTextColor(...INK);
   rows.forEach(([label, value, subtract]) => { pdf.setFont(font, 'normal'); pdf.text(label, x, y); pdf.setFont(font, 'bold'); pdf.text(`${subtract ? '− ' : ''}${formatMoney(value)}`, x + width, y, { align: 'right' }); y += 6; });
   pdf.setDrawColor(...GOLD); pdf.setLineWidth(.7); pdf.line(x, y, x + width, y); y += 7;

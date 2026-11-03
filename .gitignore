@@ -28,3 +28,5 @@ legal/respaldo/
 
 # Respaldos locales de Supabase (pueden contener datos de clientes)
 backups/
+tools/esperar-y-optimizar.log
+tools/esperar-y-optimizar.pid

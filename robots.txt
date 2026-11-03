@@ -1,0 +1,23 @@
+# Bodega Mayorista F.C.
+# Los buscadores ejecutan el JavaScript de la tienda: cada página rastreada consulta la base
+# de datos y descarga imágenes. Se excluyen las páginas privadas y las combinaciones
+# infinitas de filtros, orden y búsqueda (repiten el mismo catálogo).
+User-agent: *
+Disallow: /admin/
+Disallow: /carrito.html
+Disallow: /checkout.html
+Disallow: /favoritos.html
+Disallow: /*?*q=
+Disallow: /*?*sort=
+Disallow: /*?*brand=
+Disallow: /*?*category=
+Disallow: /*?*color=
+Disallow: /*?*size=
+Disallow: /*?*min=
+Disallow: /*?*max=
+Disallow: /*?*availability=
+Disallow: /*?*promotion=
+Disallow: /*?*discount=
+Disallow: /*?*mayoreo=
+Disallow: /*?*sub=
+Disallow: /*?*page=

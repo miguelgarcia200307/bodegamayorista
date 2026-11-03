@@ -212,10 +212,14 @@ await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: pdf
 await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 await send('Fetch.enable', { patterns: [{ urlPattern: `https://${REF}.supabase.co/*` }, { urlPattern: 'https://*.supabase.co/*' }, { urlPattern: 'https://wa.me/*' }, { urlPattern: 'https://api.whatsapp.com/*' }] });
 
+// QA_MEASURE=1 conserva la caché entre visitas para medir peticiones de una visita real.
+const keepCache = Boolean(process.env.QA_MEASURE);
 async function visit(path, width = 390, wait = 2500) {
   if (process.env.QA_TRACE) console.log('VISIT', path, width);
   await send('Emulation.setDeviceMetricsOverride', { width, height: width < 700 ? 844 : 900, deviceScaleFactor: 1, mobile: width < 700 });
   const before = await evaluate('performance.timeOrigin').catch(() => 0);
+  // Los datos simulados cambian entre visitas: se descarta la caché pública (js/lib/data-cache.js).
+  if (!keepCache) await evaluate(`Object.keys(localStorage).filter(key => key.startsWith('bm_data_v1:')).forEach(key => localStorage.removeItem(key))`).catch(() => {});
   await send('Page.navigate', { url: `http://localhost:${SITE_PORT}/${path}` });
   // Espera a que el documento NUEVO exista y termine de cargar (evita evaluar la página anterior).
   for (let waited = 0; waited < 10000; waited += 100) {
@@ -247,6 +251,17 @@ expect('datos demo del panel nunca se muestran al público', !/demo|00-00|300 00
 expect('sin WhatsApp real no se muestra el botón flotante', data.float === false);
 expect('el footer muestra la ubicación real confirmada', /Tienda física en Valledupar/.test(data.footer));
 Object.assign(settings, originalSettings, realSettings);
+if (keepCache) {
+  // Visita típica: inicio → catálogo → 2 productos → inicio. Solo informa peticiones a Supabase.
+  await visit('index.html', 390, 200).then(() => evaluate('localStorage.clear(); sessionStorage.clear()'));
+  for (const step of ['index.html', 'catalogo.html', 'producto.html?slug=celular-prueba', 'producto.html?slug=nevera-prueba', 'index.html']) {
+    const start = intercepted.length;
+    await visit(step);
+    console.log(`${step}: ${intercepted.length - start} peticiones\n  ${intercepted.slice(start).join('\n  ')}`);
+  }
+  socket.close(); chrome.kill(); server.close();
+  process.exit(0);
+}
 await visit('index.html');
 data = await evaluate(`({ cards: document.querySelectorAll('.product-card').length, brandSection: !document.querySelector('#home-brand-section')?.hidden, text: document.body.innerText })`);
 expect('inicio muestra productos', data.cards > 0, `${data.cards} tarjetas`);

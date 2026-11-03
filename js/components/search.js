@@ -1,7 +1,7 @@
 // Buscador de la tienda: al enfocarlo abre una vista con búsquedas recientes, categorías
 // populares y resultados en vivo (miniatura, nombre y precio) con 250 ms de espera.
 import { clearRecentSearches, getPopularCategories, getRecentSearches, getSearchSuggestions, saveRecentSearch } from '../lib/search.js';
-import { currentPrice, debounce, escapeHtml, formatMoney, getBrandUrl, getCategoryUrl, getProductUrl, localAsset } from '../lib/helpers.js';
+import { currentPrice, debounce, escapeHtml, formatMoney, getBrandUrl, getCategoryUrl, getProductUrl, localAsset, thumbAsset } from '../lib/helpers.js';
 import { icon } from './icons.js';
 
 async function popularMarkup() {
@@ -20,14 +20,14 @@ function entityRow(item, type) {
   const url = type === 'category' ? getCategoryUrl(item.slug) : getBrandUrl(item.slug);
   const image = type === 'category' ? item.image_url : item.logo_url;
   return `<a class="search-result search-result--entity" href="${url}">
-    <span class="search-result__thumb">${image ? `<img src="${escapeHtml(localAsset(image))}" alt="" width="48" height="48" loading="lazy">` : icon(type === 'category' ? 'grid' : 'tag')}</span>
+    <span class="search-result__thumb">${image ? `<img src="${escapeHtml(thumbAsset(image))}" alt="" width="48" height="48" loading="lazy" decoding="async">` : icon(type === 'category' ? 'grid' : 'tag')}</span>
     <span class="search-result__text"><small>${type === 'category' ? 'Categoría' : 'Marca'}</small><strong>${escapeHtml(item.name)}</strong></span>${icon('chevronRight', { size: 18, className: 'search-result__arrow' })}
   </a>`;
 }
 
 function productRow(item) {
   return `<a class="search-result" href="${getProductUrl(item.slug)}">
-    <span class="search-result__thumb"><img src="${escapeHtml(localAsset(item.image_url))}" alt="" width="48" height="48" loading="lazy"></span>
+    <span class="search-result__thumb"><img src="${escapeHtml(thumbAsset(item.image_url))}" alt="" width="48" height="48" loading="lazy" decoding="async"></span>
     <span class="search-result__text"><small>${item.promotion ? 'En oferta' : escapeHtml(item.brand_name || 'Producto')}</small><strong>${escapeHtml(item.name)}</strong></span>
     <span class="search-result__price">${formatMoney(currentPrice(item))}</span>
   </a>`;
@@ -97,7 +97,7 @@ export function bindSearch(root = document) {
         console.warn('Búsqueda no disponible:', error);
         panel.innerHTML = '<div class="search-empty"><strong>No pudimos buscar ahora</strong><span>Revisa tu conexión e intenta nuevamente.</span></div>';
       }
-    }, 250);
+    }, 350);
 
     input.addEventListener('focus', () => (input.value.trim().length >= 2 ? runSearch() : renderInitial()));
     input.addEventListener('input', runSearch);

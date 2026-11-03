@@ -445,6 +445,40 @@ export async function prepareProductImage(file, { onStatus = () => {}, signal, l
   }
 }
 
+// Límites para imágenes que se muestran en la tienda: más livianas que las de impresión.
+export const STOREFRONT_IMAGE_LIMITS = Object.freeze({ ...IMAGE_LIMITS, targetBytes: 350 * 1024, maxLongEdge: 1600, minLongEdge: 1000 });
+
+// Variantes WebP por ancho (nunca agranda). Si la versión a tamaño completo pesaría más que
+// el archivo recibido, se conserva el archivo (el más liviano).
+export async function createImageVariants(file, widths, { quality = 0.78 } = {}) {
+  if (!(await supportsWebp())) throw new ImageProcessingError('processing', 'Este navegador no genera WebP.');
+  const decoded = await decodeImage(file, { kind: MIME_DETAILS[file.type]?.kind, orientation: 1 });
+  try {
+    const variants = [];
+    for (const target of widths) {
+      const scale = Math.min(1, target / decoded.width);
+      const width = Math.max(1, Math.round(decoded.width * scale));
+      const height = Math.max(1, Math.round(decoded.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new ImageProcessingError('processing', 'No hay memoria suficiente para optimizar la fotografía.');
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(decoded.source, 0, 0, width, height);
+      let blob = await canvasBlob(canvas, 'image/webp', quality);
+      canvas.width = canvas.height = 0;
+      if (scale === 1 && file.type === 'image/webp' && blob.size >= file.size) blob = file;
+      variants.push({ target, width, height, blob });
+      await nextFrame();
+    }
+    return variants;
+  } finally {
+    decoded.close();
+  }
+}
+
 export function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
   if (bytes < MIB) return `${Math.max(1, Math.round(bytes / 1024))} KB`;

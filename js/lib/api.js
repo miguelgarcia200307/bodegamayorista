@@ -1,9 +1,9 @@
 import { supabase } from './supabase.js';
 import { PAGE_SIZE, fetchAllPages } from './paging.js';
 import { currentPrice, discountPercent, normalizeText } from './helpers.js';
+import { cachedRead, MINUTE } from './data-cache.js';
 
-const PRODUCT_SELECT = `
-  *,
+const PRODUCT_RELATIONS = `
   brands(id,name,slug,logo_url),
   product_categories(category_id,categories(id,name,slug,parent_id)),
   product_colors(id,name,hex_code,sort_order),
@@ -11,6 +11,15 @@ const PRODUCT_SELECT = `
   product_variants(id,color_id,size_id,stock,active,updated_at,price),
   product_images(id,color_id,url,alt_text,is_primary,sort_order)
 `;
+// Ficha completa (detalle y panel).
+const PRODUCT_SELECT = `*,${PRODUCT_RELATIONS}`;
+// Listados, rieles, favoritos y carrito: sin especificaciones, cuidados, guía de tallas ni
+// plantillas (solo los usa la ficha). La descripción se conserva: la búsqueda local la usa.
+const PRODUCT_LIST_SELECT = `id,name,slug,sku,model,description,material,base_price,promo_price,promo_enabled,promo_start,promo_end,status,brand_id,featured,low_stock_threshold,option1_name,option2_name,force_last_units,force_sold_out,created_at,updated_at,${PRODUCT_RELATIONS}`;
+// Tiempo de vida de la caché pública: catálogo corto, configuración más largo.
+const CATALOG_TTL = 3 * MINUTE;
+const SETTINGS_TTL = 10 * MINUTE;
+const cacheKey = (name, value) => `${name}:${JSON.stringify(value ?? null)}`;
 
 function unwrap({ data, error }) {
   if (error) throw error;
@@ -61,6 +70,10 @@ export const priceTiersSupported = () => priceTiersEnabled();
 // Ids de productos con tramos por volumen (vacío mientras la migración no esté aplicada).
 export async function getWholesaleProductIds() {
   if (!(await priceTiersEnabled())) return [];
+  return cachedRead('wholesale-ids', SETTINGS_TTL, loadWholesaleProductIds);
+}
+
+async function loadWholesaleProductIds() {
   const { data, error } = await supabase.from('product_price_tiers').select('product_id').limit(1000);
   if (error) { if (isMissingRelation(error)) priceTiersAvailable = false; return []; }
   return [...new Set((data || []).map(row => row.product_id))];
@@ -78,10 +91,15 @@ export function storageUploadMessage(error) {
 }
 
 export async function getSettings() {
-  return unwrap(await supabase.from('site_settings').select('*').eq('id', 1).single());
+  return cachedRead('settings', SETTINGS_TTL, async () => unwrap(await supabase.from('site_settings').select('*').eq('id', 1).single()));
 }
 
 export async function getHomepageBanners({ all = false } = {}) {
+  if (!all) return cachedRead('banners', SETTINGS_TTL, () => loadHomepageBanners({ all }));
+  return loadHomepageBanners({ all });
+}
+
+async function loadHomepageBanners({ all }) {
   let query = supabase.from('homepage_banners')
     .select('id,desktop_image_url,mobile_image_url,alt_text,link_url,active,sort_order')
     .order('sort_order').order('id');
@@ -121,27 +139,39 @@ export async function removeBannerImage(assetUrl) {
 }
 
 export async function getCategories({ all = false } = {}) {
-  let query = supabase.from('categories').select('*').order('sort_order').order('name');
-  if (!all) query = query.eq('active', true);
-  return unwrap(await query);
+  const load = async () => {
+    let query = supabase.from('categories').select('*').order('sort_order').order('name');
+    if (!all) query = query.eq('active', true);
+    return unwrap(await query);
+  };
+  return all ? load() : cachedRead('categories', SETTINGS_TTL, load);
 }
 
 export async function getBrands({ all = false } = {}) {
-  let query = supabase.from('brands').select('*').order('name');
-  if (!all) query = query.eq('active', true);
-  return unwrap(await query);
+  const load = async () => {
+    let query = supabase.from('brands').select('*').order('name');
+    if (!all) query = query.eq('active', true);
+    return unwrap(await query);
+  };
+  return all ? load() : cachedRead('brands', SETTINGS_TTL, load);
 }
 
 export async function getPaymentMethods({ all = false } = {}) {
-  let query = supabase.from('payment_methods').select('*').order('sort_order').order('name');
-  if (!all) query = query.eq('active', true);
-  return unwrap(await query);
+  const load = async () => {
+    let query = supabase.from('payment_methods').select('*').order('sort_order').order('name');
+    if (!all) query = query.eq('active', true);
+    return unwrap(await query);
+  };
+  return all ? load() : cachedRead('payment_methods', SETTINGS_TTL, load);
 }
 
 export async function getDeliveryMethods({ all = false } = {}) {
-  let query = supabase.from('delivery_methods').select('*').order('sort_order').order('name');
-  if (!all) query = query.eq('active', true);
-  return unwrap(await query);
+  const load = async () => {
+    let query = supabase.from('delivery_methods').select('*').order('sort_order').order('name');
+    if (!all) query = query.eq('active', true);
+    return unwrap(await query);
+  };
+  return all ? load() : cachedRead('delivery_methods', SETTINGS_TTL, load);
 }
 
 export async function createStorefrontOrder(payload, requestKey) {
@@ -234,7 +264,11 @@ export async function convertQuoteToSale(id, acceptChanges = false) { return unw
 // "Única" identifica productos sin opciones: no es un valor filtrable.
 const isRealOption = item => item?.name && !/^única$/i.test(item.name.trim());
 
-export async function getFilterOptions() {
+export function getFilterOptions() {
+  return cachedRead('filter-options', SETTINGS_TTL, loadFilterOptions);
+}
+
+async function loadFilterOptions() {
   const [allColors, allSizes] = await Promise.all([
     unwrap(await supabase.from('product_colors').select('name,hex_code,sort_order').order('name')),
     unwrap(await supabase.from('product_sizes').select('name').order('sort_order'))
@@ -287,7 +321,11 @@ function intersectSets(sets) {
   return [...available.reduce((acc, list) => new Set([...acc].filter(id => list.includes(id))), new Set(available[0]))];
 }
 
-export async function getProducts({
+export function getProducts(options = {}) {
+  return cachedRead(cacheKey('products', options), CATALOG_TTL, () => loadProducts(options));
+}
+
+async function loadProducts({
   page = 0, pageSize = 20, sort = 'featured', categoryId, brandId,
   color, size, minPrice, maxPrice, promotion = false, availability, featured, ids, search
 } = {}) {
@@ -301,7 +339,7 @@ export async function getProducts({
   if (relationIds) filteredIds = filteredIds ? filteredIds.filter(id => relationIds.includes(id)) : relationIds;
   if (filteredIds && !filteredIds.length) return { products: [], count: 0 };
 
-  let query = supabase.from('products').select(PRODUCT_SELECT, { count: 'exact' }).eq('status', 'published');
+  let query = supabase.from('products').select(PRODUCT_LIST_SELECT, { count: 'exact' }).eq('status', 'published');
   if (filteredIds) query = query.in('id', filteredIds);
   if (brandId) query = Array.isArray(brandId) ? query.in('brand_id', brandId) : query.eq('brand_id', brandId);
   if (featured === true) query = query.eq('featured', true);
@@ -334,7 +372,11 @@ export async function getProducts({
   return { products, count };
 }
 
-export async function getDiscountSortedProductIds({
+export function getDiscountSortedProductIds(options = {}) {
+  return cachedRead(cacheKey('discount-ids', options), CATALOG_TTL, () => loadDiscountSortedProductIds(options));
+}
+
+async function loadDiscountSortedProductIds({
   categoryId, brandId, color, size, minPrice, maxPrice, promotion = false, availability
 } = {}) {
   const relationIds = intersectSets([
@@ -359,26 +401,32 @@ export async function getDiscountSortedProductIds({
     .map(product => product.id);
 }
 
-export async function getProductBySlug(slug) {
-  const product = unwrap(await supabase.from('products').select(PRODUCT_SELECT).eq('slug', slug).maybeSingle());
-  if (!product) throw new Error('Producto no encontrado');
-  await attachPriceTiers(product);
-  return product;
+export function getProductBySlug(slug) {
+  return cachedRead(cacheKey('product', slug), CATALOG_TTL, async () => {
+    const product = unwrap(await supabase.from('products').select(PRODUCT_SELECT).eq('slug', slug).maybeSingle());
+    if (!product) throw new Error('Producto no encontrado');
+    await attachPriceTiers(product);
+    return product;
+  });
 }
 
 export async function getProductsByIds(ids = []) {
   if (!ids.length) return [];
-  const products = unwrap(await supabase.from('products').select(PRODUCT_SELECT).in('id', ids).eq('status', 'published'));
-  await attachPriceTiers(products);
-  return ids.map(id => products.find(product => product.id === id)).filter(Boolean);
+  return cachedRead(cacheKey('products-by-id', ids), CATALOG_TTL, async () => {
+    const products = unwrap(await supabase.from('products').select(PRODUCT_LIST_SELECT).in('id', ids).eq('status', 'published'));
+    await attachPriceTiers(products);
+    return ids.map(id => products.find(product => product.id === id)).filter(Boolean);
+  });
 }
 
 export async function getEntityBySlug(type, slug) {
   const table = { category: 'categories', brand: 'brands' }[type];
   if (!table) throw new Error('Tipo de listado no válido');
-  const entity = unwrap(await supabase.from(table).select('*').eq('slug', slug).maybeSingle());
-  if (!entity) throw new Error('Listado no encontrado');
-  return entity;
+  return cachedRead(cacheKey(table, slug), SETTINGS_TTL, async () => {
+    const entity = unwrap(await supabase.from(table).select('*').eq('slug', slug).maybeSingle());
+    if (!entity) throw new Error('Listado no encontrado');
+    return entity;
+  });
 }
 
 export async function getEntityById(type, id) {
@@ -392,6 +440,10 @@ export async function getEntityById(type, id) {
 export async function searchProducts(term, limit = 8) {
   const clean = term.trim();
   if (clean.length < 2) return [];
+  return cachedRead(cacheKey('search', [clean.toLowerCase(), limit]), CATALOG_TTL, () => loadSearchResults(clean, limit));
+}
+
+async function loadSearchResults(clean, limit) {
   const rpc = await supabase.rpc('search_products', { search_term: clean, result_limit: limit });
   if (!rpc.error) return rpc.data;
   console.warn('RPC search fallback:', rpc.error.message);
@@ -464,7 +516,7 @@ export async function removeCatalogEntityAsset(entityType, assetUrl = '') {
   if (markerIndex < 0) return false;
   const path = decodeURIComponent(pathname.slice(markerIndex + marker.length));
   if (!path.startsWith(config.folder) || path.includes('..')) return false;
-  unwrap(await supabase.storage.from(config.bucket).remove([path]));
+  unwrap(await supabase.storage.from(config.bucket).remove([path, ...variantPaths(path)]));
   return true;
 }
 
@@ -477,7 +529,7 @@ export async function removePaymentMethodAsset(assetUrl = '') {
   if (markerIndex < 0) return false;
   const path = decodeURIComponent(pathname.slice(markerIndex + marker.length));
   if (!path.startsWith('payment-methods/') || path.includes('..')) return false;
-  unwrap(await supabase.storage.from('site-assets').remove([path]));
+  unwrap(await supabase.storage.from('site-assets').remove([path, ...variantPaths(path)]));
   return true;
 }
 
@@ -536,7 +588,7 @@ async function removeUploadedProductImage(url) {
     if (index < 0) return;
     path = decodeURIComponent(pathname.slice(index + marker.length));
   } catch { return; }
-  if (path && !path.includes('..')) unwrap(await supabase.storage.from('product-images').remove([path]));
+  if (path && !path.includes('..')) unwrap(await supabase.storage.from('product-images').remove([path, ...variantPaths(path)]));
 }
 
 export async function syncProductImages(productId, images, colorIds, onProgress = () => {}) {
@@ -586,11 +638,52 @@ export async function syncProductImages(productId, images, colorIds, onProgress 
   return persisted;
 }
 
-export async function uploadImage(bucket, file, folder = 'uploads') {
+// Variantes en <bucket>/optimized/<ancho>/<ruta-sin-extensión>.webp (ver image-variants.js).
+const VARIANT_WIDTHS = [400, 800, 1200];
+const variantPaths = path => VARIANT_WIDTHS.map(width => `optimized/${width}/${path.replace(/\.[^./]+$/, '')}.webp`);
+const RASTER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+
+// Comprime a WebP (máx. 1600 px) y sube primero las tres variantes y luego el archivo
+// principal con nombre único "<uuid>-w<ancho>.webp": ese sufijo le indica a la tienda que
+// las variantes existen. Si una variante falla, se limpia lo subido y se informa el error.
+async function uploadOptimizedImage(bucket, file, folder) {
+  const { STOREFRONT_IMAGE_LIMITS, createImageVariants, prepareProductImage } = await import('./image-processor.js');
+  const prepared = await prepareProductImage(file, { limits: STOREFRONT_IMAGE_LIMITS });
+  if (prepared.file.type !== 'image/webp') return null;
+  const variants = await createImageVariants(prepared.file, VARIANT_WIDTHS);
+  const path = `${folder}/${crypto.randomUUID()}-w${prepared.finalWidth}.webp`;
+  const storage = supabase.storage.from(bucket);
+  const uploaded = [];
+  try {
+    for (const [index, variant] of variants.entries()) {
+      const target = variantPaths(path)[index];
+      unwrap(await storage.upload(target, variant.blob, { contentType: variant.blob.type || 'image/webp', cacheControl: '31536000', upsert: false }));
+      uploaded.push(target);
+    }
+    unwrap(await storage.upload(path, prepared.file, { contentType: 'image/webp', cacheControl: '31536000', upsert: false }));
+  } catch (error) {
+    if (uploaded.length) await storage.remove(uploaded).catch(() => {});
+    throw error;
+  }
+  return storage.getPublicUrl(path).data.publicUrl;
+}
+
+export async function uploadImage(bucket, file, folder = 'uploads', { variants = true } = {}) {
   const extensionByMime = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
   const namedExtension = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '');
   const extension = extensionByMime[file.type] || namedExtension || 'jpg';
   const safeFolder = String(folder || 'uploads').split('/').filter(part => part && part !== '.' && part !== '..').map(part => part.replace(/[^a-zA-Z0-9_-]/g, '')).filter(Boolean).join('/') || 'uploads';
+  if (variants && RASTER_TYPES.includes(file.type)) {
+    let optimizedUrl = null;
+    try { optimizedUrl = await uploadOptimizedImage(bucket, file, safeFolder); }
+    catch (error) {
+      // Errores de Storage (red, permisos) se informan para que el usuario reintente; si lo
+      // que falló fue el procesamiento local, se sube el archivo como antes.
+      if (error?.name !== 'ImageProcessingError') throw error;
+      console.warn('No se pudieron generar las variantes; se sube la imagen sin ellas.', error);
+    }
+    if (optimizedUrl) return optimizedUrl;
+  }
   const path = `${safeFolder}/${crypto.randomUUID()}.${extension}`;
   unwrap(await supabase.storage.from(bucket).upload(path, file, { cacheControl: '31536000', upsert: false }));
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
@@ -600,8 +693,9 @@ export async function uploadImage(bucket, file, folder = 'uploads') {
 let relationshipsPromise;
 export function getProductRelationships({ refresh = false } = {}) {
   if (refresh) relationshipsPromise = null;
-  relationshipsPromise ??= supabase.from('product_relationships').select('id,source_type,source_id,target_type,target_id,kind,strength,reposition_days,note,active')
-    .then(({ data, error }) => { if (error) { relationshipsPromise = null; if (isMissingRelation(error)) return []; throw error; } return data || []; });
+  relationshipsPromise ??= cachedRead('relationships', SETTINGS_TTL, () => supabase.from('product_relationships').select('id,source_type,source_id,target_type,target_id,kind,strength,reposition_days,note,active')
+    .then(({ data, error }) => { if (error) { if (isMissingRelation(error)) return []; throw error; } return data || []; }))
+    .catch(error => { relationshipsPromise = null; throw error; });
   return relationshipsPromise;
 }
 export async function saveProductRelationship(values, id = null) { relationshipsPromise = null; return saveRow('product_relationships', values, id); }
@@ -617,7 +711,10 @@ export async function getPeerPatterns(customerId, windowDays = 90, minSupport = 
     .map(row => ({ from_category: row.from_category, to_category: row.to_category, support: row.support, both: row.both_count, window_days: row.window_days_used }));
 }
 export async function getCustomerSignals(customerId) { return unwrap(await supabase.rpc('crm_customer_signals', { target_customer: customerId })) || []; }
-export async function getTrendingProducts(days = 30, limit = 12) {
+export function getTrendingProducts(days = 30, limit = 12) {
+  return cachedRead(cacheKey('trending', [days, limit]), SETTINGS_TTL, () => loadTrendingProducts(days, limit));
+}
+async function loadTrendingProducts(days, limit) {
   const { data, error } = await supabase.rpc('public_trending_products', { days, result_limit: limit });
   if (error) { console.warn('Tendencias no disponibles:', error.message); return []; }
   return data || [];

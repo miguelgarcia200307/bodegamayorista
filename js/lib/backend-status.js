@@ -5,6 +5,8 @@ const headers = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_A
 // navegar entre páginas ya no repite la consulta (antes: GraphQL + REST en cada página).
 const READY_KEY = 'bm_backend_ready_v2';
 const READY_TTL = 15 * 60 * 1000;
+// Ninguna comprobación espera más de 8 s: "Intentar de nuevo" nunca queda colgado.
+const REQUEST_TIMEOUT = 8000;
 let statusPromise;
 
 function readyRecently() {
@@ -18,9 +20,9 @@ function rememberReady() {
 
 // Una sola consulta mínima ([{"id":1}]). 404 = esquema sin instalar; 402/429/5xx = servicio
 // restringido o caído: se informa sin reintentar para no sumar peticiones.
-async function inspectBackend(timeoutMilliseconds) {
+async function inspectBackend() {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
   try {
     const response = await fetch(`${SUPABASE_URL}/rest/v1/site_settings?select=id&limit=1`, { headers, signal: controller.signal });
     if (response.ok) return { ready: true };
@@ -34,12 +36,12 @@ async function inspectBackend(timeoutMilliseconds) {
   }
 }
 
-// Con una conexión lenta un intento corto puede fallar aunque la base responda: solo los
-// fallos de red se reintentan, una vez, tras una espera y con más margen de tiempo.
-async function inspectWithRetry() {
-  const first = await inspectBackend(10000);
-  const result = first.reason === 'network'
-    ? await new Promise(resolve => setTimeout(resolve, 1500)).then(() => inspectBackend(20000))
+// Al cargar la página, un fallo de red se reintenta una vez tras una breve espera. El botón
+// "Intentar de nuevo" hace un único intento (máximo 8 s) y el usuario decide si repite.
+async function inspectWithRetry({ retryOnNetwork }) {
+  const first = await inspectBackend();
+  const result = retryOnNetwork && first.reason === 'network'
+    ? await new Promise(resolve => setTimeout(resolve, 1500)).then(inspectBackend)
     : first;
   if (result.ready) rememberReady();
   return result;
@@ -47,6 +49,6 @@ async function inspectWithRetry() {
 
 export function getBackendStatus({ refresh = false } = {}) {
   if (!refresh && !statusPromise && readyRecently()) statusPromise = Promise.resolve({ ready: true });
-  if (refresh || !statusPromise) statusPromise = inspectWithRetry();
+  if (refresh || !statusPromise) statusPromise = inspectWithRetry({ retryOnNetwork: !refresh });
   return statusPromise;
 }

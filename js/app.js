@@ -1,5 +1,6 @@
 import { renderLayout } from './components/layout.js';
 import { getBackendStatus } from './lib/backend-status.js';
+import { installVariantFallback } from './lib/image-variants.js';
 
 const page = document.body.dataset.page;
 
@@ -15,6 +16,11 @@ function applyBrandAssets() {
 }
 
 applyBrandAssets();
+// Antes que cualquier otro manejador: una variante que no cargue vuelve a su original.
+installVariantFallback();
+
+// Espera creciente entre reintentos manuales (2, 4, 8… hasta 60 s) para no saturar el servicio.
+let retryAttempts = 0;
 
 function renderBackendUnavailable(status) {
   document.documentElement.dataset.backendStatus = status.reason || 'unavailable';
@@ -40,13 +46,27 @@ function renderBackendUnavailable(status) {
     const main = document.querySelector('main');
     if (main) main.innerHTML = `<div class="container page">${markup}</div>`;
   }
-  document.querySelector('#retry-backend')?.addEventListener('click', async event => {
+  const retry = document.querySelector('#retry-backend');
+  const cooldown = retryAttempts ? Math.min(60, 2 ** retryAttempts) : 0;
+  if (retry && cooldown) {
+    let remaining = cooldown;
+    retry.disabled = true;
+    retry.textContent = `Intentar de nuevo (${remaining} s)`;
+    const timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) { retry.textContent = `Intentar de nuevo (${remaining} s)`; return; }
+      clearInterval(timer);
+      retry.disabled = false;
+      retry.textContent = 'Intentar de nuevo';
+    }, 1000);
+  }
+  retry?.addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
     button.textContent = 'Comprobando…';
     const nextStatus = await getBackendStatus({ refresh: true });
     if (nextStatus.ready) location.reload();
-    else renderBackendUnavailable(nextStatus);
+    else { retryAttempts += 1; renderBackendUnavailable(nextStatus); }
   });
 }
 

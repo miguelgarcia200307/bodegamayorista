@@ -255,6 +255,12 @@ async function runRemote() {
   const encoder = await startEncoder();
   const cacheDir = join(root, 'backups', 'originals');
   let before = 0; const after = { 400: 0, 800: 0, 1200: 0 };
+  // Mapeo y manifiesto se guardan tras cada subida: si la ejecución se interrumpe, todo lo
+  // subido queda registrado (para revertir) y lo completo ya figura en el manifiesto.
+  const persist = () => {
+    writeFileSync(join(backupDir, 'storage-map.json'), JSON.stringify(map, null, 1));
+    if (!dryRun) writeManifest(manifest);
+  };
   try {
     for (const item of originals) {
       const id = `${item.bucket_id}/${item.name}`;
@@ -269,18 +275,18 @@ async function runRemote() {
       const chosen = chooseVariants(bytes, item.mime, encoded);
       before += bytes.length;
       const entry = { bucket: item.bucket_id, original: item.name, originalBytes: bytes.length, width: encoded.width, height: encoded.height, variants: [] };
+      map.push(entry);
       for (const [index, variant] of chosen.entries()) {
         after[variant.target] += variant.bytes.length;
         const result = dryRun ? 'dry-run' : await upload(key, item.bucket_id, paths[index], variant.bytes, variant.contentType, flag('--force'));
         entry.variants.push({ width: variant.target, path: paths[index], bytes: variant.bytes.length, contentType: variant.contentType, source: variant.source, result });
+        persist();
       }
-      map.push(entry);
       if (!dryRun) manifest[id] = encoded.width;
+      persist();
       console.log(`${dryRun ? '~' : '✓'} ${id}: ${kb(bytes.length)} → ${chosen.map(variant => `${variant.target}:${kb(variant.bytes.length)}`).join(' ')}`);
     }
-  } finally { encoder.close(); }
-  writeFileSync(join(backupDir, 'storage-map.json'), JSON.stringify(map, null, 1));
-  if (!dryRun) writeManifest(manifest);
+  } finally { encoder.close(); persist(); }
   console.log(`\n${map.length} originales procesados (${kb(before)}).`);
   WIDTHS.forEach(width => console.log(`  ${width}px → ${kb(after[width])}`));
   console.log(`Mapeo original → variantes: ${relative(root, join(backupDir, 'storage-map.json'))}`);

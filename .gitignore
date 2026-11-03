@@ -25,3 +25,6 @@ output/
 # Paquete de publicación generado por tools/build-deploy.mjs
 deploy/
 legal/respaldo/
+
+# Respaldos locales de Supabase (pueden contener datos de clientes)
+backups/

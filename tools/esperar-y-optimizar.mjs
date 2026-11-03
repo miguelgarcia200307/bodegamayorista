@@ -118,7 +118,14 @@ async function openBrowser() {
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   return {
     send, evaluate, on: listener => listeners.push(listener),
-    close() { try { socket.close(); } catch { /* cerrado */ } chrome.kill(); rmSync(profile, { recursive: true, force: true, maxRetries: 3 }); }
+    async close() {
+      try { socket.close(); } catch { /* cerrado */ }
+      const exited = new Promise(done => chrome.once('exit', done));
+      chrome.kill();
+      await Promise.race([exited, sleep(5000)]);
+      // El perfil temporal es prescindible: si Windows aún lo bloquea, se deja para el sistema.
+      try { rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }); } catch { /* sin efecto en el resultado */ }
+    }
   };
 }
 
@@ -147,7 +154,7 @@ async function measureVisit(baseUrl, pages) {
       images.filter(image => image.loaded && (!image.ok || image.placeholder)).forEach(image => broken.push(`${page}: ${image.src}`));
       fallbacks += images.filter(image => image.fallback).length;
     }
-  } finally { browser.close(); }
+  } finally { await browser.close(); }
   const supabase = [...requests.values()].filter(item => /\.supabase\.co\//.test(item.url) && item.done);
   const storage = supabase.filter(item => item.url.includes('/storage/v1/'));
   const api = supabase.filter(item => !item.url.includes('/storage/v1/'));
@@ -373,12 +380,16 @@ async function main() {
     context.measurement = await measure();
     const { after } = context.measurement;
     if (after.broken.length) throw new StageError('medición', `Imágenes rotas en la versión optimizada:\n${after.broken.slice(0, 20).join('\n')}`);
+    const failed = [...context.measurement.before.failedSupabase, ...after.failedSupabase];
+    if (failed.length) throw new StageError('medición', `Supabase respondió con error durante la medición (no es válida):\n${failed.slice(0, 10).join('\n')}`);
+    if (!context.measurement.before.storageRequests) throw new StageError('medición', 'La versión anterior no descargó imágenes de Storage: la medición no es válida.');
     log(`Medición: antes ${kb(context.measurement.before.storageBytes)} imágenes + ${kb(context.measurement.before.apiBytes)} datos; después ${kb(after.storageBytes)} + ${kb(after.apiBytes)}.`);
     writeReport({ state: 'PUBLICANDO', ...context });
     await publish();
     context.published = await verifyLive();
     context.published.forEach(line => log(line));
-    writeReport({ state: 'COMPLETADO', ...context });
+    const warnings = context.published.some(line => /no sirve el manifiesto|revirtió/.test(line) || /(rotas|con error|consola): [1-9]/.test(line));
+    writeReport({ state: warnings ? 'COMPLETADO CON AVISOS' : 'COMPLETADO', ...context });
     log('Proceso completado. Reporte en REPORTE-FINAL-EGRESS.md.');
   } catch (error) {
     log(`✗ ${error.stage ? `[${error.stage}] ` : ''}${error.message}`);

@@ -10,7 +10,7 @@ import { mountBannerEditor } from '../components/banner-editor.js';
 import { chooseAction, confirmAction, openModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
-import { $, $$, categoryInitials, currentPrice, escapeHtml, formatMoney, getPromotionStatus, isPromoActive, localAsset, normalizeText, paymentInitials, setButtonLoading, slugify } from '../lib/helpers.js';
+import { $, $$, categoryInitials, currentPrice, escapeHtml, formatMoney, getPromotionStatus, isPromoActive, localAsset, normalizeText, paymentInitials, setButtonLoading, slugify, thumbAsset } from '../lib/helpers.js';
 import { ANNOUNCEMENT_INTERVAL_MAX, ANNOUNCEMENT_INTERVAL_MIN, ANNOUNCEMENT_TEXT_LIMIT, announcementValues, createAnnouncementController, normalizeAnnouncementSettings, validateAnnouncement } from '../lib/announcement.js';
 import { formatBytes, imageFingerprint, imageProcessingMessage, IMAGE_LIMITS, prepareProductImage } from '../lib/image-processor.js';
 
@@ -25,7 +25,7 @@ const STOCK_PAGE_SIZE=30;
 const ENTITY_PAGE_SIZE=30;
 const cleanText=normalizeText;
 const debounce=(callback,delay=200)=>{let timer;return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>callback(...args),delay);};};
-const productImage=product=>localAsset(product.product_images?.find(image=>image.is_primary)?.url||product.product_images?.[0]?.url);
+const productImage=product=>thumbAsset(product.product_images?.find(image=>image.is_primary)?.url||product.product_images?.[0]?.url);
 const totalStock=product=>product.product_variants.reduce((sum,variant)=>sum+Number(variant.stock||0),0);
 const isProductSoldOut=product=>product.force_sold_out||totalStock(product)===0;
 const lowThreshold=product=>Number(product?.low_stock_threshold??3);
@@ -484,7 +484,7 @@ function entityAssetUrl(type,item){return type==='categories'?item?.image_url:it
 function entityThumb(type,item){
   const url=entityAssetUrl(type,item);const initials=type==='categories'?categoryInitials(item.name):item.name.split(/\s+/).slice(0,2).map(word=>word[0]).join('').toUpperCase();
   const assetClass=type==='categories'?'entity-thumb--category':'entity-thumb--brand';
-  return `<div class="data-row__thumb entity-thumb ${assetClass}">${url?`<img src="${escapeHtml(localAsset(url))}" alt="" loading="lazy" width="52" height="52">`:`<span aria-hidden="true">${escapeHtml(initials)}</span>`}</div>`;
+  return `<div class="data-row__thumb entity-thumb ${assetClass}">${url?`<img src="${escapeHtml(thumbAsset(url))}" alt="" loading="lazy" width="52" height="52">`:`<span aria-hidden="true">${escapeHtml(initials)}</span>`}</div>`;
 }
 
 function entityProductCount(type,item){return type==='categories'?products.filter(product=>product.product_categories.some(row=>row.category_id===item.id)).length:products.filter(product=>product.brand_id===item.id).length;}
@@ -1032,7 +1032,7 @@ async function renderSettings(){
     Object.assign(values,announcementValues(current));
     saving=true;setButtonLoading(button,true,'Guardando…');root.querySelector('[data-savebar-title]').textContent='Guardando…';
     try{
-      const file=logoInput.files[0];if(file)values.logo_url=await uploadImage('site-assets',file,'logo');
+      const file=logoInput.files[0];if(file)values.logo_url=await uploadImage('site-assets',file,'logo',{variants:false});
       const saved=await saveSettings(values);invalidateCrmSettings();Object.assign(settings,saved||values);
       announcement=normalizeAnnouncementSettings(saved||values);announcement.messages=announcement.messages.map(message=>({...message}));
       enabledInput.checked=announcement.enabled;form.elements.announcement_mode.value=announcement.mode;logoInput.value='';
@@ -1060,7 +1060,7 @@ async function renderPrivacyMaintenance(settings){
   panel.querySelector('[data-plan]').innerHTML=`${icon('card',{size:18})}<div><strong>Plan del servicio</strong><small>${plan?(plan.status==='sin_plan'?escapeHtml(plan.message):`Plan ${escapeHtml(plan.plan||'')} · estado ${escapeHtml(plan.status)}${plan.period_end?` · vigente hasta ${escapeHtml(plan.period_end)}`:''}${plan.enforcement_enabled?'':' · sin bloqueo automático'}`):'No disponible.'} El cobro automático está desactivado: no hay proveedor de pagos configurado.</small></div>`;
 }
 
-function paymentMethodThumb(item){return `<div class="data-row__thumb entity-thumb payment-method-thumb">${item.logo_url?`<img src="${escapeHtml(localAsset(item.logo_url))}" alt="" loading="lazy" width="52" height="52">`:`<span aria-hidden="true">${escapeHtml(paymentInitials(item.name))}</span>`}</div>`;}
+function paymentMethodThumb(item){return `<div class="data-row__thumb entity-thumb payment-method-thumb">${item.logo_url?`<img src="${escapeHtml(thumbAsset(item.logo_url))}" alt="" loading="lazy" width="52" height="52">`:`<span aria-hidden="true">${escapeHtml(paymentInitials(item.name))}</span>`}</div>`;}
 function paymentRows(items){return `<div class="cfg-rows">${items.length?items.map(item=>`<article class="cfg-row ${item.active?'':'is-off'}" data-payment="${item.id}">${paymentMethodThumb(item)}<div class="cfg-row__main"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.instructions||'Sin instrucciones para el cliente')}</small></div><span class="status-pill status-pill--${item.active?'active':'hidden'}">${item.active?'Activo':'Oculto'}</span><div class="cfg-row__actions"><button class="small-btn" data-edit type="button">${icon('pencil',{size:15})}<span>Editar</span></button><button class="icon-btn icon-btn--danger" data-delete type="button" aria-label="Eliminar ${escapeHtml(item.name)}" title="Eliminar">${icon('trash',{size:16})}</button></div></article>`).join(''):`<div class="cfg-empty">${icon('wallet',{size:22})}<strong>Sin métodos de pago</strong><small>Agrega transferencias, efectivo o pagos con tarjeta.</small></div>`}</div>`;}
 function bindPayments(items){$$('[data-payment]').forEach(row=>{const item=items.find(x=>x.id===row.dataset.payment);const editButton=row.querySelector('[data-edit]');const deleteButton=row.querySelector('[data-delete]');editButton.addEventListener('click',()=>openPaymentForm(item,items));deleteButton.addEventListener('click',async()=>{const confirmed=await confirmAction(`¿Eliminar ${item.name}? Esta acción no se puede deshacer.`,'Eliminar método de pago',{confirmLabel:'Eliminar método',trigger:deleteButton});if(!confirmed)return;setButtonLoading(deleteButton,true,'Eliminando…');try{await deleteRow('payment_methods',item.id);await renderSettings();toast('Método eliminado');if(item.logo_url)removePaymentMethodAsset(item.logo_url).catch(error=>console.warn('No se pudo limpiar el logo del método:',error));}catch(error){console.error(error);setButtonLoading(deleteButton,false);toast('No pudimos eliminar el método. Intenta nuevamente.','error');}});});}
 function openPaymentForm(item,items){

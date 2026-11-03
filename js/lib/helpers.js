@@ -1,4 +1,5 @@
 import { icon } from '../components/icons.js';
+import { variantUrl } from './image-variants.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -86,12 +87,15 @@ export function localAsset(url = '') {
   return `${pagePrefix()}${url.replace(/^\/?/, '')}`;
 }
 
-export function productImage(product, colorId = null) {
+// Miniatura liviana (variante de 400 px si existe) para listados, tarjetas y carrito.
+export const thumbAsset = url => variantUrl(localAsset(url), 'thumb');
+
+export function productImage(product, colorId = null, size = 'thumb') {
   const images = product?.product_images || product?.images || [];
   const colorImages = colorId ? images.filter(image => image.color_id === colorId) : images;
   const selected = (colorImages.length ? colorImages : images)
     .slice().sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order)[0];
-  return localAsset(selected?.url || product?.image_url);
+  return variantUrl(localAsset(selected?.url || product?.image_url), size);
 }
 
 export function debounce(fn, delay = 220) {

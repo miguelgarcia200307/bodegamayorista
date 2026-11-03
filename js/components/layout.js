@@ -3,7 +3,7 @@
 import { getSiteData, loadSettings as loadSiteSettings } from '../site-config.js';
 import { getCategories } from '../lib/api.js';
 import { cartCount, getFavorites } from '../lib/store.js';
-import { escapeHtml, getCategoryUrl, localAsset } from '../lib/helpers.js';
+import { escapeHtml, getCategoryUrl, localAsset, thumbAsset } from '../lib/helpers.js';
 import { createAnnouncementController } from '../lib/announcement.js';
 import { icon } from './icons.js';
 import { bindSearch, searchBox } from './search.js';
@@ -80,7 +80,7 @@ function footerMarkup(site) {
       <nav class="footer__col" aria-labelledby="footer-help"><h2 id="footer-help"><a href="ayuda.html">Ayuda</a></h2><div class="footer__links">${help.join('')}</div></nav>
       ${visit.length ? `<section class="footer__col" aria-labelledby="footer-visit"><h2 id="footer-visit">Visítanos</h2><div class="footer__stack">${visit.join('')}</div></section>` : ''}
     </div>
-    ${site.payments.length ? `<div class="container footer__payments"><span>Medios de pago</span><ul>${site.payments.map(method => `<li>${method.logo ? `<img src="${escapeHtml(localAsset(method.logo))}" alt="${escapeHtml(method.name)}" width="48" height="24" loading="lazy">` : escapeHtml(method.name)}</li>`).join('')}</ul></div>` : ''}
+    ${site.payments.length ? `<div class="container footer__payments"><span>Medios de pago</span><ul>${site.payments.map(method => `<li>${method.logo ? `<img src="${escapeHtml(thumbAsset(method.logo))}" alt="${escapeHtml(method.name)}" width="48" height="24" loading="lazy">` : escapeHtml(method.name)}</li>`).join('')}</ul></div>` : ''}
     <div class="footer__bottom"><div class="container"><span>© ${new Date().getFullYear()} ${escapeHtml(site.businessName)}${legal ? ` · ${escapeHtml(legal)}` : ''}</span><a href="admin/login.html">Administrar</a></div></div>
   </footer>`;
 }

@@ -11,7 +11,7 @@ import { renderProducts, renderProductSkeletons } from '../components/product-ca
 import { renderProductSection } from '../components/product-section.js';
 import { toast } from '../components/toast.js';
 import { buildProductFilterSections, createFilterPanel } from '../components/filter-panel.js';
-import { $, $$, categoryIdsWithDescendants, categoryInitials, currentPrice, discountPercent, emptyState, escapeHtml, formatMoney, getCategoryUrl, getProductUrl, isPromoActive, localAsset, normalizeText, params, productImage, routeSlug, sharePage } from '../lib/helpers.js';
+import { $, $$, categoryIdsWithDescendants, categoryInitials, currentPrice, discountPercent, emptyState, escapeHtml, formatMoney, getCategoryUrl, getProductUrl, isPromoActive, normalizeText, params, productImage, routeSlug, sharePage, thumbAsset } from '../lib/helpers.js';
 import { getFavorites, setFavorites } from '../lib/store.js';
 
 const PAGE_SIZE = 20;
@@ -80,7 +80,7 @@ function renderCategoryRail(categories) {
   if (!parents.length) { root.closest('.home-categories').hidden = true; return; }
   const item = category => {
     const media = category.image_url
-      ? `<img src="${escapeHtml(localAsset(category.image_url))}" alt="" width="64" height="64" loading="eager" decoding="async">`
+      ? `<img src="${escapeHtml(thumbAsset(category.image_url))}" alt="" width="64" height="64" loading="eager" decoding="async">`
       : `<span>${escapeHtml(categoryInitials(category.name))}</span>`;
     return `<a class="category-rail__item" href="${getCategoryUrl(category.slug)}"><span class="category-rail__media">${media}</span><span class="category-rail__label">${escapeHtml(category.name)}</span></a>`;
   };

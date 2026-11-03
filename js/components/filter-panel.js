@@ -1,4 +1,4 @@
-import { escapeHtml, localAsset, normalizeText } from '../lib/helpers.js';
+import { escapeHtml, normalizeText, thumbAsset } from '../lib/helpers.js';
 
 const cloneState = state => Object.fromEntries(Object.entries(state).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]));
 const isSelected = (state, key, value) => Array.isArray(state[key]) ? state[key].includes(value) : state[key] === value;
@@ -16,7 +16,7 @@ function optionMarkup(section, option, state) {
   const value = String(option.value);
   const selected = isSelected(state, section.key, value);
   const image = option.image
-    ? `<span class="filter-option__media${option.mediaType ? ` filter-option__media--${escapeHtml(option.mediaType)}` : ''}"><img src="${escapeHtml(localAsset(option.image))}" alt="" loading="lazy"></span>`
+    ? `<span class="filter-option__media${option.mediaType ? ` filter-option__media--${escapeHtml(option.mediaType)}` : ''}"><img src="${escapeHtml(thumbAsset(option.image))}" alt="" loading="lazy" decoding="async"></span>`
     : '';
   const meta = option.meta ? `<small>${escapeHtml(option.meta)}</small>` : '';
   const count = Number.isFinite(option.count) ? `<span class="filter-option__count">${option.count}</span>` : '';

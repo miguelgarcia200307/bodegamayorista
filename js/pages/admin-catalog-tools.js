@@ -5,7 +5,7 @@ import { RELATION_KINDS } from '../lib/reco-core.js';
 import { confirmAction, openModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
-import { $, currentPrice, debounce, escapeHtml, formatMoney, isPromoActive, localAsset, normalizeText, productImage, setButtonLoading } from '../lib/helpers.js';
+import { $, currentPrice, debounce, escapeHtml, formatMoney, isPromoActive, normalizeText, productImage, setButtonLoading, thumbAsset } from '../lib/helpers.js';
 import { kpiTileMarkup, plural, requestError } from './admin-crm.js';
 
 let ctx = null;
@@ -39,7 +39,7 @@ function catalogIndex() {
   const entity = (type, id) => {
     if (type === 'category') {
       const category = categories.find(item => item.id === id);
-      return { type, id, name: category?.name || 'Categoría eliminada', label: 'Categoría', image: category?.image_url ? localAsset(category.image_url) : '', sub: plural(perCategory.get(id) || 0, 'producto'), missing: !category };
+      return { type, id, name: category?.name || 'Categoría eliminada', label: 'Categoría', image: category?.image_url ? thumbAsset(category.image_url) : '', sub: plural(perCategory.get(id) || 0, 'producto'), missing: !category };
     }
     const product = products.find(item => item.id === id);
     return { type, id, name: product?.name || 'Producto eliminado', label: 'Producto', image: product ? productImage(product) : '', sub: product?.brands?.name || '', missing: !product };

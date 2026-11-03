@@ -2,7 +2,7 @@
 // métodos de pago/entrega y site-config). Si falta un texto se dice que está pendiente:
 // esta página no inventa textos legales ni condiciones.
 import { getSiteData } from '../site-config.js';
-import { $, $$, escapeHtml, localAsset, paymentInitials } from '../lib/helpers.js';
+import { $, $$, escapeHtml, paymentInitials, thumbAsset } from '../lib/helpers.js';
 import { formatLegal, legalVersionLine } from '../lib/legal-format.js';
 import { CONSENT_EVENT, getConsent, privacyConfig } from '../lib/privacy.js';
 import { icon } from '../components/icons.js';
@@ -19,7 +19,7 @@ function sectionHead(slug, title, iconName, subtitle = '') {
 function cards(items = [], withLogo = false) {
   if (!items.length) return '';
   return `<ul class="help-cards">${items.map(item => `<li class="help-card">
-    ${withLogo ? `<span class="help-card__logo" aria-hidden="true">${item.logo ? `<img src="${escapeHtml(localAsset(item.logo))}" alt="" loading="lazy">` : escapeHtml(paymentInitials(item.title))}</span>` : ''}
+    ${withLogo ? `<span class="help-card__logo" aria-hidden="true">${item.logo ? `<img src="${escapeHtml(thumbAsset(item.logo))}" alt="" loading="lazy">` : escapeHtml(paymentInitials(item.title))}</span>` : ''}
     <div class="help-card__body"><strong>${escapeHtml(item.title)}</strong>${item.text ? `<p>${escapeHtml(item.text)}</p>` : ''}</div></li>`).join('')}</ul>`;
 }
 

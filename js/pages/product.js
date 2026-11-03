@@ -7,7 +7,8 @@ import { openModal, openSheet } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { icon } from '../components/icons.js';
 import { getSiteData, whatsappLink } from '../site-config.js';
-import { $, $$, escapeHtml, formatMoney, getCategoryUrl, localAsset, params, productImage, routeSlug, sharePage, setButtonLoading } from '../lib/helpers.js';
+import { $, $$, escapeHtml, formatMoney, getCategoryUrl, localAsset, params, productImage, routeSlug, sharePage, setButtonLoading, thumbAsset } from '../lib/helpers.js';
+import { variantSrcset, variantUrl } from '../lib/image-variants.js';
 import { nextTier, priceTiers, tierFor, tierRanges, unitPriceFor, variantPrice } from '../lib/pricing.js';
 import { addCartItem, buildCartItem, getCart, isFavorite, toggleFavorite, updateCartLine } from '../lib/store.js';
 
@@ -165,9 +166,9 @@ export async function initProduct() {
     galleryImages = imagesForColor(selectedColor);
     if (!galleryImages.length) galleryImages = [{ url: productImage(product), alt_text: product.name }];
     galleryIndex = 0;
-    $('#gallery-track').innerHTML = galleryImages.map((image, index) => `<figure class="gallery__slide"><img src="${escapeHtml(localAsset(image.url))}" alt="${escapeHtml(image.alt_text && !/\.(jpe?g|png|webp|avif)$/i.test(image.alt_text) ? image.alt_text : `${product.name}, imagen ${index + 1} de ${galleryImages.length}`)}" width="800" height="800" ${index === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} decoding="async"></figure>`).join('');
+    $('#gallery-track').innerHTML = galleryImages.map((image, index) => `<figure class="gallery__slide"><img src="${escapeHtml(variantUrl(localAsset(image.url), 'md'))}"${variantSrcset(localAsset(image.url)) ? ` srcset="${escapeHtml(variantSrcset(localAsset(image.url)))}" sizes="(min-width: 960px) 50vw, 100vw"` : ''} alt="${escapeHtml(image.alt_text && !/\.(jpe?g|png|webp|avif)$/i.test(image.alt_text) ? image.alt_text : `${product.name}, imagen ${index + 1} de ${galleryImages.length}`)}" width="800" height="800" ${index === 0 ? 'loading="eager" fetchpriority="high"' : 'loading="lazy"'} decoding="async"></figure>`).join('');
     $('#gallery-track').scrollLeft = 0;
-    $('#gallery-thumbs').innerHTML = galleryImages.length > 1 ? galleryImages.map((image, index) => `<button class="gallery__thumb${index ? '' : ' active'}" type="button" data-image="${index}" aria-label="Ver imagen ${index + 1}" aria-current="${index === 0}"><img src="${escapeHtml(localAsset(image.url))}" alt="" width="64" height="64" loading="lazy"></button>`).join('') : '';
+    $('#gallery-thumbs').innerHTML = galleryImages.length > 1 ? galleryImages.map((image, index) => `<button class="gallery__thumb${index ? '' : ' active'}" type="button" data-image="${index}" aria-label="Ver imagen ${index + 1}" aria-current="${index === 0}"><img src="${escapeHtml(thumbAsset(image.url))}" alt="" width="64" height="64" loading="lazy" decoding="async"></button>`).join('') : '';
     updateGalleryIndex(0);
   }
 
@@ -187,7 +188,7 @@ export async function initProduct() {
   function openLightbox(startIndex, trigger) {
     const wrapper = document.createElement('div');
     wrapper.className = 'lightbox';
-    wrapper.innerHTML = `<div class="lightbox__track">${galleryImages.map((image, index) => `<div class="lightbox__slide"><img src="${escapeHtml(localAsset(image.url))}" alt="${escapeHtml(`${product.name}, imagen ${index + 1}`)}" loading="${index === startIndex ? 'eager' : 'lazy'}"></div>`).join('')}</div>${galleryImages.length > 1 ? `<button class="lightbox__nav lightbox__nav--prev" type="button" aria-label="Imagen anterior">${icon('chevronLeft', { size: 24 })}</button><button class="lightbox__nav lightbox__nav--next" type="button" aria-label="Imagen siguiente">${icon('chevronRight', { size: 24 })}</button>` : ''}<p class="lightbox__hint">Toca la imagen para acercar · pellizca para hacer zoom</p>`;
+    wrapper.innerHTML = `<div class="lightbox__track">${galleryImages.map((image, index) => `<div class="lightbox__slide"><img src="${escapeHtml(variantUrl(localAsset(image.url), 'lg'))}" decoding="async" alt="${escapeHtml(`${product.name}, imagen ${index + 1}`)}" loading="${index === startIndex ? 'eager' : 'lazy'}"></div>`).join('')}</div>${galleryImages.length > 1 ? `<button class="lightbox__nav lightbox__nav--prev" type="button" aria-label="Imagen anterior">${icon('chevronLeft', { size: 24 })}</button><button class="lightbox__nav lightbox__nav--next" type="button" aria-label="Imagen siguiente">${icon('chevronRight', { size: 24 })}</button>` : ''}<p class="lightbox__hint">Toca la imagen para acercar · pellizca para hacer zoom</p>`;
     const modal = openModal({ title: `${startIndex + 1}/${galleryImages.length} · ${product.name}`, content: wrapper, className: 'modal--lightbox', trigger });
     const track = wrapper.querySelector('.lightbox__track');
     const title = modal.element.querySelector('.modal__head h2');

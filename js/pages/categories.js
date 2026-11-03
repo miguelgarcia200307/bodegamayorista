@@ -1,12 +1,12 @@
 import { getCategories } from '../lib/api.js';
-import { $, categoryInitials, emptyState, escapeHtml, getCategoryUrl, localAsset } from '../lib/helpers.js';
+import { $, categoryInitials, emptyState, escapeHtml, getCategoryUrl, thumbAsset } from '../lib/helpers.js';
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
 const CATEGORY_PAGE_SIZE = 60;
 
 function categoryVisual(category) {
   if (category.image_url) {
-    return `<img src="${escapeHtml(localAsset(category.image_url))}" alt="" loading="lazy" decoding="async">`;
+    return `<img src="${escapeHtml(thumbAsset(category.image_url))}" alt="" loading="lazy" decoding="async">`;
   }
   return `<span class="category-card__fallback" aria-hidden="true"><i>${escapeHtml(categoryInitials(category.name))}</i><b></b></span>`;
 }

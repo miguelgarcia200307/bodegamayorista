@@ -7,7 +7,7 @@ import { toast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 import { icon } from '../components/icons.js';
 import { cleanLabel, realValue } from '../site-config.js';
-import { $, debounce, emptyState, escapeHtml, formatMoney, localAsset, paymentInitials } from '../lib/helpers.js';
+import { $, debounce, emptyState, escapeHtml, formatMoney, paymentInitials, thumbAsset } from '../lib/helpers.js';
 import { formatLegal } from '../lib/legal-format.js';
 import { cartPricing } from '../lib/pricing.js';
 import { clearCart, getCart } from '../lib/store.js';
@@ -170,7 +170,7 @@ function renderDeliveryMethods(methods, selected = '') {
 
 function renderPaymentMethods(methods, selected = '') {
   const root = $('#payment-methods');
-  root.innerHTML = methods.length ? methods.map(method => choiceMarkup('payment', method, selected, `<span class="choice__logo" aria-hidden="true">${method.logo_url ? `<img src="${escapeHtml(localAsset(method.logo_url))}" alt="">` : escapeHtml(paymentInitials(cleanLabel(method.name)))}</span>`)).join('') : '<p class="notice notice--warning">Por ahora no hay métodos de pago disponibles. Escríbenos por WhatsApp para ayudarte.</p>';
+  root.innerHTML = methods.length ? methods.map(method => choiceMarkup('payment', method, selected, `<span class="choice__logo" aria-hidden="true">${method.logo_url ? `<img src="${escapeHtml(thumbAsset(method.logo_url))}" alt="">` : escapeHtml(paymentInitials(cleanLabel(method.name)))}</span>`)).join('') : '<p class="notice notice--warning">Por ahora no hay métodos de pago disponibles. Escríbenos por WhatsApp para ayudarte.</p>';
 }
 
 function selectedDelivery(form, deliveries) { return deliveries.find(item => item.id === form.elements.delivery?.value) || null; }
